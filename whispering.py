@@ -29,9 +29,8 @@ class Text(tk.Text):
             if res is not True:
                 done_str, curr_str = res
                 self.delete(self.record, tk.END)
-                if done_str is not None:
-                    self.insert(tk.END, done_str, 'done')
-                    self.record = self.index('end-1c')
+                self.insert(tk.END, done_str, 'done')
+                self.record = self.index('end-1c')
                 self.insert(tk.END, curr_str, 'curr')
             elif self.index('end-1c').split('.')[1] != '2':
                 done_str = self.get(self.record, 'end-1c')
@@ -42,7 +41,7 @@ class Text(tk.Text):
                 self.record = self.index('end-1c')
             self.see(tk.END)
             self.config(state = tk.DISABLED)
-        self.after(100, self.update) # prevent busy waiting
+        self.after(100, self.update) # avoid busy waiting
 class Queue:
     def __init__(self):
         self.queue = collections.deque()
@@ -99,7 +98,7 @@ def transcribe(size, device, latency, patience, eager, amnesia, prompt, attensio
                 window = window[int(segments[-attension].start * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
                 prev_src = segments[-attension - 1].text if amnesia else prev_src + done_src
             else:
-                done_src = None
+                done_src = ''
                 curr_src = ''.join(segment.text for segment in segments)
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
@@ -107,27 +106,28 @@ def transcribe(size, device, latency, patience, eager, amnesia, prompt, attensio
     def tl_fun():
         while ts2tl := ts2tl_queue.get():
             if ts2tl is True:
-                pref_src = ''
+                rsrv_src = ''
                 tlres_queue.put(True)
                 continue
             done_src, curr_src = ts2tl
-            if done_src is not None:
-                done_src = pref_src + done_src
-                full_src = done_src + curr_src
+            if done_src:
+                done_src = rsrv_src + done_src
                 done_res = translate(done_src, source or 'auto', target)
-                full_res = translate(full_src, source or 'auto', target)
-                done_len = len(done_res) - 1
-                if done_res[done_len][1] == full_res[done_len][1]:
-                    done_len += 1
-                    pref_src = ''
-                else:
-                    pref_src = done_res[done_len][1]
-                done_tgt = ''.join(t for t, s in full_res[:done_len])
-                curr_tgt = ''.join(t for t, s in full_res[done_len:])
-            else:
-                curr_src = pref_src + curr_src
+                rsrv_src = done_res[-1][1]
+                curr_src = rsrv_src + curr_src
                 curr_res = translate(curr_src, source or 'auto', target)
-                done_tgt = None
+                comp_src = curr_res[0][1]
+                if comp_src == rsrv_src:
+                    curr_res.pop(0)
+                    rsrv_src = ''
+                else:
+                    done_res.pop(-1)
+                done_tgt = ''.join(t for t, s in done_res)
+                curr_tgt = ''.join(t for t, s in curr_res)
+            else:
+                curr_src = rsrv_src + curr_src
+                curr_res = translate(curr_src, source or 'auto', target)
+                done_tgt = ''
                 curr_tgt = ''.join(t for t, s in curr_res)
             tlres_queue.put((done_tgt, curr_tgt))
     listen_thread = threading.Thread(target = listen, daemon = True)
