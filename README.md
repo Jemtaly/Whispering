@@ -50,6 +50,6 @@ The `whispering.py` script listens to the microphone and transcribes the speech 
 - `--flush`: If present, the script will flush the transcribing window, reset the prompt, and start a new paragraph after each pause. Otherwise the pause time will be simply skipped.
 - `--amnesia`: If present, the script will only use the last segment instead of the whole paragraph as the prompt for the next segment. Otherwise the whole paragraph will be used as the prompt.
 - `--prompt`: The initial prompt for the first segment in each paragraph.
-- `--deliberation`: The maximum number of segments to keep in the transcribing window. The default value is `1`.
-- `--source`: The source language code for translation. The default value is `None`, which means the source language will be automatically detected.
-- `--target`: The target language code for translation. The default value is `en` (English).
+- `--deliberation`: The maximum number of segments to keep in the transcribing window. The default value is `1`. The higher the value, the more context the model has to work with, but the slower the response time.
+- `--source`: The source language for translation. The default value is `None`, which means the source language will be automatically detected.
+- `--target`: The target language for translation. The default value is `en` (English).
