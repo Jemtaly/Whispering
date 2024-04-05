@@ -21,7 +21,7 @@ class Text(tk.Text):
         self.record = self.index('end-1c')
         self.config(state = tk.DISABLED)
         self.res_queue = res_queue
-        self.after(1, self.update)
+        self.after(100, self.update)
     def update(self):
         while not self.res_queue.empty():
             res = self.res_queue.get()
@@ -34,14 +34,15 @@ class Text(tk.Text):
                     self.record = self.index('end-1c')
                 self.insert(tk.END, curr_str, 'curr')
             elif self.index('end-1c').split('.')[1] != '2':
-                done_str = self.get(self.record, tk.END).rstrip('\n') + '\n'
+                done_str = self.get(self.record, 'end-1c')
                 self.delete(self.record, tk.END)
                 self.insert(tk.END, done_str, 'done')
+                self.insert(tk.END, '\n', 'done')
                 self.insert(tk.END, '  ', 'done')
                 self.record = self.index('end-1c')
             self.see(tk.END)
             self.config(state = tk.DISABLED)
-        self.after(1, self.update)
+        self.after(100, self.update) # prevent busy waiting
 class Queue:
     def __init__(self):
         self.queue = collections.deque()
@@ -152,7 +153,7 @@ def main():
     parser.add_argument('--eager', action = 'store_true', help = 'consider all segments in the transcribing window as finished once there is a pause')
     parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment as the prompt for the next segment')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment')
-    parser.add_argument('--attension', type = int, default = 2, choices = range(1, 6), help = 'maximum number of segments to consider for transcription')
+    parser.add_argument('--attension', type = int, default = 1, choices = range(1, 6), help = 'maximum number of segments to consider for transcription')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation')
     args = parser.parse_args()
