@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import queue
 import threading
 import collections
@@ -58,7 +59,7 @@ class Queue:
             while not self.queue:
                 self.cond.wait()
             return self.queue.popleft()
-def transcribe(size, device, latency, patience, eager, amnesia, prompt, attension, source, target):
+def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target):
     model = WhisperModel(size)
     recognizer = sr.Recognizer()
     mic = sr.Microphone(device)
@@ -74,7 +75,7 @@ def transcribe(size, device, latency, patience, eager, amnesia, prompt, attensio
                 try:
                     audio = recognizer.listen(mic, timeout = patience, phrase_time_limit = latency)
                 except sr.WaitTimeoutError:
-                    if eager:
+                    if flush:
                         frame_queue.put(True)
                 else:
                     frame_queue.put(audio.frame_data)
@@ -92,11 +93,11 @@ def transcribe(size, device, latency, patience, eager, amnesia, prompt, attensio
             with io.BytesIO(audio.get_wav_data()) as audio_file:
                 segments, info = model.transcribe(audio_file, language = source, initial_prompt = prev_src)
             segments = list(segments)
-            if len(segments) > attension:
-                done_src = ''.join(segment.text for segment in segments[:-attension])
-                curr_src = ''.join(segment.text for segment in segments[-attension:])
-                window = window[int(segments[-attension].start * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
-                prev_src = segments[-attension - 1].text if amnesia else prev_src + done_src
+            if len(segments) > deliberation:
+                done_src = ''.join(segment.text for segment in segments[:-deliberation])
+                curr_src = ''.join(segment.text for segment in segments[-deliberation:])
+                window = window[int(segments[-deliberation].start * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
+                prev_src = segments[-deliberation - 1].text if amnesia else prev_src + done_src
             else:
                 done_src = ''
                 curr_src = ''.join(segment.text for segment in segments)
@@ -150,10 +151,10 @@ def main():
     parser.add_argument('--device', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
     parser.add_argument('--patience', type = float, default = 1.0, help = 'maximum time to wait for speech before assuming a pause')
-    parser.add_argument('--eager', action = 'store_true', help = 'consider all segments in the transcribing window as finished once there is a pause')
-    parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment as the prompt for the next segment')
+    parser.add_argument('--flush', action = 'store_true', help = 'flush the transcribing window, reset the prompt and start a new paragraph after each pause')
+    parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment instead of the whole paragraph as the prompt for the next segment')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment')
-    parser.add_argument('--attension', type = int, default = 1, choices = range(1, 6), help = 'maximum number of segments to consider for transcription')
+    parser.add_argument('--deliberation', type = int, default = 1, choices = range(1, 4), help = 'maximum number of segments to keep in the transcribing window')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation')
     args = parser.parse_args()
@@ -163,10 +164,10 @@ def main():
                 args.device = device
                 break
         else:
-            print('No such device, fallback to default.')
+            print('No such microphone device, fallback to default.')
             args.device = None
     if not args.amnesia and args.prompt is None:
         args.prompt = ''
-    transcribe(args.size, args.device, args.latency, args.patience, args.eager, args.amnesia, args.prompt, args.attension, args.source, args.target)
+    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target)
 if __name__ == '__main__':
     main()
