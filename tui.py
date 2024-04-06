@@ -1,8 +1,8 @@
 import curses
 import time
-class Text:
-    def __init__(self, height, width, begin_y, begin_x, res_queue):
-        self.win = curses.newwin(height, width, begin_y, begin_x)
+class Win:
+    def __init__(self, h, w, t, l, res_queue):
+        self.win = curses.newwin(h, w, t, l)
         self.res_queue = res_queue
         self.win.addstr(0, 0, '  ')
         self.savepos()
@@ -36,24 +36,24 @@ class Text:
 def show(tsres_queue, tlres_queue):
     stdscr = curses.initscr()
     stdscr.clear()
-    nrows, ncols = curses.LINES, curses.COLS
+    h, w = curses.LINES, curses.COLS
     stdscr.clear()
-    stdscr.hline(        0,              1, curses.ACS_HLINE, ncols // 2 - 2)
-    stdscr.hline(        0, ncols // 2    , curses.ACS_HLINE, ncols // 2 - 2)
-    stdscr.vline(        1,              0, curses.ACS_VLINE, nrows      - 2)
-    stdscr.vline(        1, ncols // 2 - 1, curses.ACS_VLINE, nrows      - 2)
-    stdscr.vline(        1, ncols      - 2, curses.ACS_VLINE, nrows      - 2)
-    stdscr.hline(nrows - 1,              1, curses.ACS_HLINE, ncols // 2 - 2)
-    stdscr.hline(nrows - 1, ncols // 2    , curses.ACS_HLINE, ncols // 2 - 2)
-    stdscr.addch(        0, ncols // 2 - 1, curses.ACS_TTEE)
-    stdscr.addch(nrows - 1, ncols // 2 - 1, curses.ACS_BTEE)
-    stdscr.addch(        0,              0, curses.ACS_ULCORNER)
-    stdscr.addch(        0, ncols      - 2, curses.ACS_URCORNER)
-    stdscr.addch(nrows - 1,              0, curses.ACS_LLCORNER)
-    stdscr.addch(nrows - 1, ncols      - 2, curses.ACS_LRCORNER)
+    stdscr.hline(    0,          1, curses.ACS_HLINE, w // 2 - 2)
+    stdscr.hline(h - 1,          1, curses.ACS_HLINE, w // 2 - 2)
+    stdscr.hline(    0, w // 2    , curses.ACS_HLINE, w // 2 - 2)
+    stdscr.hline(h - 1, w // 2    , curses.ACS_HLINE, w // 2 - 2)
+    stdscr.addch(    0,          0, curses.ACS_ULCORNER)
+    stdscr.addch(h - 1,          0, curses.ACS_LLCORNER)
+    stdscr.addch(    0, w      - 2, curses.ACS_URCORNER)
+    stdscr.addch(h - 1, w      - 2, curses.ACS_LRCORNER)
+    stdscr.addch(    0, w // 2 - 1, curses.ACS_TTEE)
+    stdscr.addch(h - 1, w // 2 - 1, curses.ACS_BTEE)
+    stdscr.vline(    1,          0, curses.ACS_VLINE, h      - 2)
+    stdscr.vline(    1, w      - 2, curses.ACS_VLINE, h      - 2)
+    stdscr.vline(    1, w // 2 - 1, curses.ACS_VLINE, h      - 2)
     stdscr.refresh()
-    ts_win = Text(nrows - 2, ncols // 2 - 4, 1,              2, tsres_queue)
-    tl_win = Text(nrows - 2, ncols // 2 - 4, 1, ncols // 2 + 1, tlres_queue)
+    ts_win = Win(h - 2, w // 2 - 4, 1,          2, tsres_queue)
+    tl_win = Win(h - 2, w // 2 - 4, 1, w // 2 + 1, tlres_queue)
     while True:
         try:
             ts_win.update()

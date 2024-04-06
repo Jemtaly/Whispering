@@ -11,10 +11,10 @@ A real-time transcription and translation tool implemented in Python based on th
 ## Usage
 
 ```
-usage: whispering.py [-h] [--size {tiny,base,small,medium,large}]
-                     [--device DEVICE] [--latency LATENCY] [--patience PATIENCE]
-                     [--flush] [--amnesia] [--prompt PROMPT]
-                     [--deliberation {1,2,3}] [--source SOURCE] [--target TARGET]
+usage: whispering.py [-h] [--size {tiny,base,small,medium,large}] [--device DEVICE]
+                     [--latency LATENCY] [--patience PATIENCE] [--flush] [--amnesia]
+                     [--prompt PROMPT] [--deliberation {1,2,3}] [--source SOURCE]
+                     [--target TARGET] [--tui]
 
 Transcribe and translate speech in real-time.
 
@@ -25,16 +25,17 @@ options:
   --device DEVICE       microphone device name
   --latency LATENCY     latency between speech and transcription
   --patience PATIENCE   maximum time to wait for speech before assuming a pause
-  --flush               flush the transcribing window, reset the prompt and start
-                        a new paragraph after each pause
-  --amnesia             only use the last segment instead of the whole paragraph
-                        as the prompt for the next segment
+  --flush               flush the transcribing window, reset the prompt and start a new
+                        paragraph after each pause
+  --amnesia             only use the last segment instead of the whole paragraph as the
+                        prompt for the next segment
   --prompt PROMPT       initial prompt for the first segment
   --deliberation {1,2,3}
-                        maximum number of segments to keep in the transcribing
-                        window
+                        maximum number of segments to keep in the transcribing window
   --source SOURCE       source language for translation
   --target TARGET       target language for translation
+  --tui                 use text-based user interface (curses) instead of graphical user
+                        interface (tkinter)
 ```
 
 ## Explanation
@@ -53,3 +54,4 @@ The `whispering.py` script listens to the microphone and transcribes the speech 
 - `--deliberation`: The maximum number of segments to keep in the transcribing window. The default value is `1`. The higher the value, the more context the model takes into account, but also the higher the processing overhead, which may lead to higher latency.
 - `--source`: The source language code for translation. The default value is `None`, which means the source language will be automatically detected.
 - `--target`: The target language code for translation. The default value is `en` (English).
+- `--tui`: Use text-based user interface (curses is needed) instead of graphical user interface (tkinter is needed).
