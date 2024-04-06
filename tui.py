@@ -15,6 +15,7 @@ class Pad:
         if y >= self.h:
             t = y - self.h + 1
             self.pad.scroll(t)
+            self.pad.move(y - t, x)
             self.y -= t
         self.pad.refresh(0, 0, self.t, self.l, self.t + self.h - 1, self.l + self.w - 1)
     def save_pos(self):
