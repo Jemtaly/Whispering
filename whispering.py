@@ -52,7 +52,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                 else:
                     frame_queue.put(audio.frame_data)
         frame_queue.put(False) # finalize
-    def ts_fun():
+    def transc():
         while frame := frame_queue.get():
             if frame is True:
                 window = bytearray()
@@ -76,7 +76,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
         ts2tl_queue.put(False)
-    def tl_fun():
+    def transl():
         while ts2tl := ts2tl_queue.get():
             if ts2tl is True:
                 rsrv_src = ''
@@ -85,35 +85,35 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
             done_src, curr_src = ts2tl
             if done_src:
                 done_src = rsrv_src + done_src
-                done_res = translate(done_src, source or 'auto', target)
-                rsrv_src = done_res[-1][0]
+                done_snt = translate(done_src, source or 'auto', target)
+                rsrv_src = done_snt[-1][0]
                 curr_src = rsrv_src + curr_src
-                curr_res = translate(curr_src, source or 'auto', target)
-                comp_src = curr_res[0][0]
+                curr_snt = translate(curr_src, source or 'auto', target)
+                comp_src = curr_snt[0][0]
                 if comp_src == rsrv_src:
-                    curr_res.pop(0)
+                    curr_snt.pop(0)
                     rsrv_src = ''
                 else:
-                    done_res.pop(-1)
-                done_tgt = ''.join(t for s, t in done_res)
-                curr_tgt = ''.join(t for s, t in curr_res)
+                    done_snt.pop(-1)
+                done_tgt = ''.join(t for s, t in done_snt)
+                curr_tgt = ''.join(t for s, t in curr_snt)
             else:
                 curr_src = rsrv_src + curr_src
-                curr_res = translate(curr_src, source or 'auto', target)
+                curr_snt = translate(curr_src, source or 'auto', target)
                 done_tgt = ''
-                curr_tgt = ''.join(t for s, t in curr_res)
+                curr_tgt = ''.join(t for s, t in curr_snt)
             tlres_queue.put((done_tgt, curr_tgt))
     listen_thread = threading.Thread(target = listen, daemon = True)
-    ts_fun_thread = threading.Thread(target = ts_fun, daemon = True)
-    tl_fun_thread = threading.Thread(target = tl_fun, daemon = True)
+    transc_thread = threading.Thread(target = transc, daemon = True)
+    transl_thread = threading.Thread(target = transl, daemon = True)
     listen_thread.start()
-    ts_fun_thread.start()
-    tl_fun_thread.start()
+    transc_thread.start()
+    transl_thread.start()
     __import__('tui' if tui else 'gui').show(tsres_queue, tlres_queue)
     listen_flag[0] = False
     listen_thread.join()
-    ts_fun_thread.join()
-    tl_fun_thread.join()
+    transc_thread.join()
+    transl_thread.join()
 def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
     parser.add_argument('--size', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')

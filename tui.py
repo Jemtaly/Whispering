@@ -22,26 +22,26 @@ class Pad:
     def load_pos(self):
         self.pad.move(self.y, self.x)
         self.pad.clrtobot()
-    def add_curr(self, curr_str):
+    def add_curr(self, curr):
         self.pad.attron(curses.A_UNDERLINE | curses.A_DIM)
-        self.pad.addstr(curr_str)
+        self.pad.addstr(curr)
         self.pad.attroff(curses.A_UNDERLINE | curses.A_DIM)
-    def add_done(self, done_str):
-        self.pad.addstr(done_str)
+    def add_done(self, done):
+        self.pad.addstr(done)
     def update(self):
         while not self.res_queue.empty():
             res = self.res_queue.get()
             if res is not True:
-                done_str, curr_str = res
+                done, curr = res
                 self.load_pos()
-                self.add_done(done_str)
+                self.add_done(done)
                 self.save_pos()
-                self.add_curr(curr_str)
-                self.last = curr_str
+                self.add_curr(curr)
+                self.last = curr
             elif self.last is not None:
-                done_str = self.last
+                done = self.last
                 self.load_pos()
-                self.add_done(done_str)
+                self.add_done(done)
                 self.add_done('\n')
                 self.add_done('  ')
                 self.save_pos()

@@ -7,7 +7,7 @@ class Text(tk.Text):
         self.tag_config('curr', foreground = 'blue')
         self.insert(tk.END, '  ', 'done')
         self.record = self.index('end-1c')
-        self.last = None
+        self.start = True
         self.see(tk.END)
         self.config(state = tk.DISABLED)
         self.after(100, self.update)
@@ -16,20 +16,20 @@ class Text(tk.Text):
             res = self.res_queue.get()
             self.config(state = tk.NORMAL)
             if res is not True:
-                done_str, curr_str = res
+                done, curr = res
                 self.delete(self.record, tk.END)
-                self.insert(tk.END, done_str, 'done')
+                self.insert(tk.END, done, 'done')
                 self.record = self.index('end-1c')
-                self.insert(tk.END, curr_str, 'curr')
-                self.last = curr_str
-            elif self.last is not None:
-                done_str = self.last
+                self.insert(tk.END, curr, 'curr')
+                self.start = False
+            elif self.start is False:
+                done = self.get(self.record, 'end-1c')
                 self.delete(self.record, tk.END)
-                self.insert(tk.END, done_str, 'done')
+                self.insert(tk.END, done, 'done')
                 self.insert(tk.END, '\n', 'done')
                 self.insert(tk.END, '  ', 'done')
                 self.record = self.index('end-1c')
-                self.last = None
+                self.start = True
             self.see(tk.END)
             self.config(state = tk.DISABLED)
         self.after(100, self.update) # avoid busy waiting
