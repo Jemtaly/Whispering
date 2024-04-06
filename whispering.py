@@ -96,7 +96,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
             if len(segments) > deliberation:
                 done_src = ''.join(segment.text for segment in segments[:-deliberation])
                 curr_src = ''.join(segment.text for segment in segments[-deliberation:])
-                window = window[int(segments[-deliberation].start * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
+                window = window[int(segments[-deliberation - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
                 prev_src = segments[-deliberation - 1].text if amnesia else prev_src + done_src
             else:
                 done_src = ''
