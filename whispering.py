@@ -86,10 +86,10 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
             if done_src:
                 done_src = rsrv_src + done_src
                 done_res = translate(done_src, source or 'auto', target)
-                rsrv_src = done_res[-1][1]
+                rsrv_src = done_res[-1][0]
                 curr_src = rsrv_src + curr_src
                 curr_res = translate(curr_src, source or 'auto', target)
-                comp_src = curr_res[0][1]
+                comp_src = curr_res[0][0]
                 if comp_src == rsrv_src:
                     curr_res.pop(0)
                     rsrv_src = ''

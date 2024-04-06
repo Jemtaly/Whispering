@@ -7,6 +7,8 @@ class Text(tk.Text):
         self.tag_config('curr', foreground = 'blue')
         self.insert(tk.END, '  ', 'done')
         self.record = self.index('end-1c')
+        self.last = None
+        self.see(tk.END)
         self.config(state = tk.DISABLED)
         self.after(100, self.update)
     def update(self):
@@ -19,13 +21,15 @@ class Text(tk.Text):
                 self.insert(tk.END, done_str, 'done')
                 self.record = self.index('end-1c')
                 self.insert(tk.END, curr_str, 'curr')
-            elif self.index('end-1c').split('.')[1] != '2':
-                done_str = self.get(self.record, 'end-1c')
+                self.last = curr_str
+            elif self.last is not None:
+                done_str = self.last
                 self.delete(self.record, tk.END)
                 self.insert(tk.END, done_str, 'done')
                 self.insert(tk.END, '\n', 'done')
                 self.insert(tk.END, '  ', 'done')
                 self.record = self.index('end-1c')
+                self.last = None
             self.see(tk.END)
             self.config(state = tk.DISABLED)
         self.after(100, self.update) # avoid busy waiting
