@@ -2,47 +2,12 @@
 import queue
 import threading
 import collections
-import tkinter as tk
 import io
+import argparse
+import requests
 import speech_recognition as sr
 from faster_whisper import WhisperModel
 from urllib.parse import quote
-import requests
-import argparse
-def translate(text, source, target):
-    url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}'.format(source, target, quote(text))
-    ans = requests.get(url).json()[0] or []
-    return [(t, s) for t, s, *infos in ans]
-class Text(tk.Text):
-    def __init__(self, master, res_queue):
-        super().__init__(master)
-        self.tag_config('done', foreground = 'black')
-        self.tag_config('curr', foreground = 'blue')
-        self.insert(tk.END, '  ', 'done')
-        self.record = self.index('end-1c')
-        self.config(state = tk.DISABLED)
-        self.res_queue = res_queue
-        self.after(100, self.update)
-    def update(self):
-        while not self.res_queue.empty():
-            res = self.res_queue.get()
-            self.config(state = tk.NORMAL)
-            if res is not True:
-                done_str, curr_str = res
-                self.delete(self.record, tk.END)
-                self.insert(tk.END, done_str, 'done')
-                self.record = self.index('end-1c')
-                self.insert(tk.END, curr_str, 'curr')
-            elif self.index('end-1c').split('.')[1] != '2':
-                done_str = self.get(self.record, 'end-1c')
-                self.delete(self.record, tk.END)
-                self.insert(tk.END, done_str, 'done')
-                self.insert(tk.END, '\n', 'done')
-                self.insert(tk.END, '  ', 'done')
-                self.record = self.index('end-1c')
-            self.see(tk.END)
-            self.config(state = tk.DISABLED)
-        self.after(100, self.update) # avoid busy waiting
 class Queue:
     def __init__(self):
         self.queue = collections.deque()
@@ -59,7 +24,14 @@ class Queue:
             while not self.queue:
                 self.cond.wait()
             return self.queue.popleft()
-def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target):
+def translate(text, source, target):
+    try:
+        url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}'.format(source, target, quote(text))
+        ans = requests.get(url).json()[0] or []
+        return [(s, t) for t, s, *infos in ans]
+    except:
+        return [(text, 'Translation service is unavailable.')]
+def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target, tui):
     model = WhisperModel(size)
     recognizer = sr.Recognizer()
     mic = sr.Microphone(device)
@@ -123,13 +95,13 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                     rsrv_src = ''
                 else:
                     done_res.pop(-1)
-                done_tgt = ''.join(t for t, s in done_res)
-                curr_tgt = ''.join(t for t, s in curr_res)
+                done_tgt = ''.join(t for s, t in done_res)
+                curr_tgt = ''.join(t for s, t in curr_res)
             else:
                 curr_src = rsrv_src + curr_src
                 curr_res = translate(curr_src, source or 'auto', target)
                 done_tgt = ''
-                curr_tgt = ''.join(t for t, s in curr_res)
+                curr_tgt = ''.join(t for s, t in curr_res)
             tlres_queue.put((done_tgt, curr_tgt))
     listen_thread = threading.Thread(target = listen, daemon = True)
     ts_fun_thread = threading.Thread(target = ts_fun, daemon = True)
@@ -137,10 +109,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
     listen_thread.start()
     ts_fun_thread.start()
     tl_fun_thread.start()
-    root = tk.Tk()
-    Text(root, tsres_queue).pack(expand = True, fill = 'both', side = 'left')
-    Text(root, tlres_queue).pack(expand = True, fill = 'both', side = 'right')
-    root.mainloop()
+    __import__('tui' if tui else 'gui').show(tsres_queue, tlres_queue)
     listen_flag[0] = False
     listen_thread.join()
     ts_fun_thread.join()
@@ -157,6 +126,7 @@ def main():
     parser.add_argument('--deliberation', type = int, default = 1, choices = range(1, 4), help = 'maximum number of segments to keep in the transcribing window')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation')
+    parser.add_argument('--tui', action = 'store_true', help = 'use text-based user interface (curses) instead of graphical user interface (tkinter)')
     args = parser.parse_args()
     if args.device is not None:
         for device, name in enumerate(sr.Microphone.list_microphone_names()):
@@ -168,6 +138,6 @@ def main():
             args.device = None
     if not args.amnesia and args.prompt is None:
         args.prompt = ''
-    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target)
+    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target, args.tui)
 if __name__ == '__main__':
     main()
