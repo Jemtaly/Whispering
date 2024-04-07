@@ -30,8 +30,8 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                 try:
                     audio = recognizer.listen(mic, timeout = patience, phrase_time_limit = latency)
                 except sr.WaitTimeoutError:
-                    if flush:
-                        frame_queue.put(True)
+                    if flush or deliberation <= 0:
+                        frame_queue.put(True) # flush
                 else:
                     frame_queue.put(audio.frame_data)
         frame_queue.put(False) # finalize
@@ -48,7 +48,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
             with io.BytesIO(audio.get_wav_data()) as audio_file:
                 segments, info = model.transcribe(audio_file, language = source, initial_prompt = prev_src)
             segments = list(segments)
-            if len(segments) > deliberation:
+            if len(segments) > deliberation > 0:
                 done_src = ''.join(segment.text for segment in segments[:-deliberation])
                 curr_src = ''.join(segment.text for segment in segments[-deliberation:])
                 window = window[int(segments[-deliberation - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
@@ -101,11 +101,11 @@ def main():
     parser.add_argument('--size', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')
     parser.add_argument('--device', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
-    parser.add_argument('--patience', type = float, default = 1.0, help = 'maximum time to wait for speech before assuming a pause')
-    parser.add_argument('--flush', action = 'store_true', help = 'flush the transcribing window, reset the prompt and start a new paragraph after each pause')
+    parser.add_argument('--patience', type = float, default = 1.0, help = 'time to wait for speech before a pause is detected')
+    parser.add_argument('--flush', action = 'store_true', help = 'flush the iteration window, reset the prompt and start a new paragraph after a pause')
     parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment instead of the whole paragraph as the prompt for the next segment')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment')
-    parser.add_argument('--deliberation', type = int, default = 1, choices = range(1, 4), help = 'maximum number of segments to keep in the transcribing window')
+    parser.add_argument('--deliberation', type = int, default = 1, help = 'maximum number of segments retained in the iteration window, <= 0 for unlimited (and flush on pause will be forcibly enabled)')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation, English by default')
     parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
