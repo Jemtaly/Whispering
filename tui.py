@@ -3,23 +3,13 @@ import time
 class Pad:
     def __init__(self, h, w, t, l, res_queue):
         self.pad = curses.newpad(h * 2, w)
-        self.pad.scrollok(True)
         self.h, self.w, self.t, self.l = h, w, t, l
         self.res_queue = res_queue
         self.add_done('  ')
-        self.save_pos()
         self.last = None
         self.refresh()
     def refresh(self):
-        y, x = self.pad.getyx()
-        if y >= self.h:
-            t = y - self.h + 1
-            self.pad.scroll(t)
-            self.pad.move(y - t, x)
-            self.y -= t
         self.pad.refresh(0, 0, self.t, self.l, self.t + self.h - 1, self.l + self.w - 1)
-    def save_pos(self):
-        self.y, self.x = self.pad.getyx()
     def load_pos(self):
         self.pad.move(self.y, self.x)
         self.pad.clrtobot()
@@ -27,8 +17,26 @@ class Pad:
         self.pad.attron(curses.A_UNDERLINE | curses.A_DIM)
         self.pad.addstr(curr)
         self.pad.attroff(curses.A_UNDERLINE | curses.A_DIM)
+        y, x = self.pad.getyx()
+        if y >= self.h:
+            t = y - self.h + 1
+            self.pad.scrollok(True)
+            self.pad.scroll(t)
+            self.pad.scrollok(False)
+            self.pad.move(y - t, x)
+            self.y -= t
     def add_done(self, done):
+        self.pad.scrollok(True)
         self.pad.addstr(done)
+        self.pad.scrollok(False)
+        y, x = self.pad.getyx()
+        if y >= self.h:
+            t = y - self.h + 1
+            self.pad.scrollok(True)
+            self.pad.scroll(t)
+            self.pad.scrollok(False)
+            self.pad.move(y - t, x)
+        self.y, self.x = self.pad.getyx()
     def update(self):
         while not self.res_queue.empty():
             res = self.res_queue.get()
@@ -36,7 +44,6 @@ class Pad:
                 done, curr = res
                 self.load_pos()
                 self.add_done(done)
-                self.save_pos()
                 self.add_curr(curr)
                 self.last = curr
             elif self.last is not None:
@@ -45,7 +52,6 @@ class Pad:
                 self.add_done(done)
                 self.add_done('\n')
                 self.add_done('  ')
-                self.save_pos()
                 self.last = None
             self.refresh()
 def show(tsres_queue, tlres_queue):
