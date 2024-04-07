@@ -1,45 +1,28 @@
 #!/usr/bin/env python3
-import queue
 import threading
-import collections
 import io
 import argparse
 import requests
 import speech_recognition as sr
 from faster_whisper import WhisperModel
 from urllib.parse import quote
-class Queue:
-    def __init__(self):
-        self.queue = collections.deque()
-        self.cond = threading.Condition()
-    def put(self, item):
-        with self.cond:
-            if self.queue and isinstance(self.queue[-1], bytes) and isinstance(item, bytes):
-                self.queue[-1] += item
-            else:
-                self.queue.append(item)
-            self.cond.notify()
-    def get(self):
-        with self.cond:
-            while not self.queue:
-                self.cond.wait()
-            return self.queue.popleft()
-def translate(text, source, target):
+from que import DataQueue, PairQueue
+def translate(text, source, target, timeout):
     try:
-        url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}'.format(source, target, quote(text))
-        ans = requests.get(url).json()[0] or []
+        url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}'.format(source or 'auto', target, quote(text))
+        ans = requests.get(url, timeout = timeout).json()[0] or []
         return [(s, t) for t, s, *infos in ans]
     except:
-        return [(text, 'Translation service is unavailable.')]
-def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target, tui):
+        return [(text, 'Cannot connect to the translation service.')]
+def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target, timeout, tui):
     model = WhisperModel(size)
     recognizer = sr.Recognizer()
     mic = sr.Microphone(device)
     listen_flag = [True]
-    frame_queue = Queue()
-    ts2tl_queue = queue.Queue()
-    tsres_queue = queue.Queue()
-    tlres_queue = queue.Queue()
+    frame_queue = DataQueue()
+    ts2tl_queue = PairQueue()
+    tsres_queue = PairQueue()
+    tlres_queue = PairQueue()
     def listen():
         frame_queue.put(True) # initialize
         with mic:
@@ -83,14 +66,14 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                 tlres_queue.put(True)
                 continue
             done_src, curr_src = ts2tl
-            if done_src:
+            if done_src or rsrv_src:
                 done_src = rsrv_src + done_src
-                done_snt = translate(done_src, source or 'auto', target)
+                done_snt = translate(done_src, source, target, timeout)
                 rsrv_src = done_snt[-1][0]
                 curr_src = rsrv_src + curr_src
-                curr_snt = translate(curr_src, source or 'auto', target)
-                comp_src = curr_snt[0][0]
-                if comp_src == rsrv_src:
+                curr_snt = translate(curr_src, source, target, timeout)
+                temp_src = curr_snt[0][0]
+                if len(curr_snt) > 1 and temp_src == rsrv_src:
                     curr_snt.pop(0)
                     rsrv_src = ''
                 else:
@@ -98,8 +81,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                 done_tgt = ''.join(t for s, t in done_snt)
                 curr_tgt = ''.join(t for s, t in curr_snt)
             else:
-                curr_src = rsrv_src + curr_src
-                curr_snt = translate(curr_src, source or 'auto', target)
+                curr_snt = translate(curr_src, source, target, timeout)
                 done_tgt = ''
                 curr_tgt = ''.join(t for s, t in curr_snt)
             tlres_queue.put((done_tgt, curr_tgt))
@@ -124,8 +106,9 @@ def main():
     parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment instead of the whole paragraph as the prompt for the next segment')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment')
     parser.add_argument('--deliberation', type = int, default = 1, choices = range(1, 4), help = 'maximum number of segments to keep in the transcribing window')
-    parser.add_argument('--source', type = str, default = None, help = 'source language for translation')
-    parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation')
+    parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
+    parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation, English by default')
+    parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
     parser.add_argument('--tui', action = 'store_true', help = 'use text-based user interface (curses) instead of graphical user interface (tkinter)')
     args = parser.parse_args()
     if args.device is not None:
@@ -138,6 +121,6 @@ def main():
             args.device = None
     if not args.amnesia and args.prompt is None:
         args.prompt = ''
-    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target, args.tui)
+    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target, args.timeout, args.tui)
 if __name__ == '__main__':
     main()
