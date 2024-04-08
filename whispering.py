@@ -53,7 +53,7 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
                 done_src = ''.join(segment.text for segment in segments[:-rumination])
                 curr_src = ''.join(segment.text for segment in segments[-rumination:])
                 window = window[int(segments[-rumination - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
-                prompts.extend(segment.text for segment in segments[-rumination:])
+                prompts.extend(segment.text for segment in segments[:-rumination])
             else:
                 done_src = ''
                 curr_src = ''.join(segment.text for segment in segments)
@@ -120,6 +120,6 @@ def main():
         else:
             print('No such microphone device, fallback to default.')
             args.device = None
-    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.rumination, args.source, args.target, args.timeout, args.tui)
+    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.memory, args.prompt, args.rumination, args.source, args.target, args.timeout, args.tui)
 if __name__ == '__main__':
     main()
