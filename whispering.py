@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import threading
 import io
+import collections
 import argparse
 import requests
 import speech_recognition as sr
@@ -14,7 +15,7 @@ def translate(text, source, target, timeout):
         return [(s, t) for t, s, *infos in ans]
     except:
         return [(text, 'Cannot connect to the translation service.')]
-def transcribe(size, device, latency, patience, flush, amnesia, prompt, deliberation, source, target, timeout, tui):
+def transcribe(size, device, latency, patience, flush, memory, prompt, rumination, source, target, timeout, tui):
     model = WhisperModel(size)
     recognizer = sr.Recognizer()
     mic = sr.Microphone(device)
@@ -30,7 +31,7 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
                 try:
                     audio = recognizer.listen(mic, timeout = patience, phrase_time_limit = latency)
                 except sr.WaitTimeoutError:
-                    if flush or deliberation <= 0:
+                    if flush or rumination <= 0:
                         frame_queue.put(True) # flush
                 else:
                     frame_queue.put(audio.frame_data)
@@ -39,20 +40,20 @@ def transcribe(size, device, latency, patience, flush, amnesia, prompt, delibera
         while frame := frame_queue.get():
             if frame is True:
                 window = bytearray()
-                prev_src = prompt
+                prompts = collections.deque([] if prompt is None else [prompt], memory or None)
                 ts2tl_queue.put(True)
                 tsres_queue.put(True)
                 continue
             window.extend(frame)
             audio = sr.AudioData(window, mic.SAMPLE_RATE, mic.SAMPLE_WIDTH)
             with io.BytesIO(audio.get_wav_data()) as audio_file:
-                segments, info = model.transcribe(audio_file, language = source, initial_prompt = prev_src)
+                segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts))
             segments = list(segments)
-            if len(segments) > deliberation > 0:
-                done_src = ''.join(segment.text for segment in segments[:-deliberation])
-                curr_src = ''.join(segment.text for segment in segments[-deliberation:])
-                window = window[int(segments[-deliberation - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
-                prev_src = segments[-deliberation - 1].text if amnesia else prev_src + done_src
+            if len(segments) > rumination > 0:
+                done_src = ''.join(segment.text for segment in segments[:-rumination])
+                curr_src = ''.join(segment.text for segment in segments[-rumination:])
+                window = window[int(segments[-rumination - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
+                prompts.extend(segment.text for segment in segments[-rumination:])
             else:
                 done_src = ''
                 curr_src = ''.join(segment.text for segment in segments)
@@ -103,9 +104,9 @@ def main():
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
     parser.add_argument('--patience', type = float, default = 1.0, help = 'time to wait for speech before a pause is detected')
     parser.add_argument('--flush', action = 'store_true', help = 'flush the iteration window, reset the prompt and start a new paragraph after a pause')
-    parser.add_argument('--amnesia', action = 'store_true', help = 'only use the last segment instead of the whole paragraph as the prompt for the next segment')
-    parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment')
-    parser.add_argument('--deliberation', type = int, default = 1, help = 'maximum number of segments retained in the iteration window, <= 0 for unlimited (and flush on pause will be forcibly enabled)')
+    parser.add_argument('--memory', action = 'store_true', type = int, default = 3, help = 'maximum number of completed segments used as prompt for the next segment, 0 for unlimited')
+    parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment of each paragraph')
+    parser.add_argument('--rumination', type = int, default = 1, help = 'maximum number of segments retained in the iteration window, 0 for unlimited (and flush on pause will be forcibly enabled)')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation, English by default')
     parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
@@ -119,8 +120,6 @@ def main():
         else:
             print('No such microphone device, fallback to default.')
             args.device = None
-    if not args.amnesia and args.prompt is None:
-        args.prompt = ''
-    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.deliberation, args.source, args.target, args.timeout, args.tui)
+    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.amnesia, args.prompt, args.rumination, args.source, args.target, args.timeout, args.tui)
 if __name__ == '__main__':
     main()
