@@ -73,22 +73,19 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
             done_src, curr_src = ts2tl
             if done_src or rsrv_src:
                 done_src = rsrv_src + done_src
+                test_src = done_src + ' test.' # test if the last sentence is complete
                 done_snt = translate(done_src, source, target, timeout)
-                rsrv_src = done_snt[-1][0]
-                curr_src = rsrv_src + curr_src
-                curr_snt = translate(curr_src, source, target, timeout)
-                temp_src = curr_snt[0][0]
-                if len(curr_snt) > 1 and temp_src == rsrv_src:
-                    curr_snt.pop(0)
+                test_snt = translate(test_src, source, target, timeout)
+                if len(test_snt) == len(done_snt) + 1 and done_snt[-1][1] == test_snt[-2][1]:
                     rsrv_src = ''
                 else:
-                    done_snt.pop(-1)
+                    rsrv_src = done_snt.pop(-1)[0]
                 done_tgt = ''.join(t for s, t in done_snt)
-                curr_tgt = ''.join(t for s, t in curr_snt)
             else:
-                curr_snt = translate(curr_src, source, target, timeout)
                 done_tgt = ''
-                curr_tgt = ''.join(t for s, t in curr_snt)
+            curr_src = rsrv_src + curr_src
+            curr_snt = translate(curr_src, source, target, timeout)
+            curr_tgt = ''.join(t for s, t in curr_snt)
             tlres_queue.put((done_tgt, curr_tgt))
     listen_thread = threading.Thread(target = listen, daemon = True)
     transc_thread = threading.Thread(target = transc, daemon = True)
