@@ -104,7 +104,7 @@ def main():
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
     parser.add_argument('--patience', type = float, default = 1.0, help = 'time to wait for speech before a pause is detected')
     parser.add_argument('--flush', action = 'store_true', help = 'flush the iteration window, reset the prompt and start a new paragraph after a pause')
-    parser.add_argument('--memory', action = 'store_true', type = int, default = 3, help = 'maximum number of completed segments used as prompt for the next segment, 0 for unlimited')
+    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of completed segments used as prompt for the next segment, 0 for unlimited')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment of each paragraph')
     parser.add_argument('--rumination', type = int, default = 1, help = 'maximum number of segments retained in the iteration window, 0 for unlimited (and flush on pause will be forcibly enabled)')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
