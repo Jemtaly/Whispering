@@ -31,7 +31,7 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
                 try:
                     audio = recognizer.listen(mic, timeout = patience, phrase_time_limit = latency)
                 except sr.WaitTimeoutError:
-                    if flush or rumination <= 0:
+                    if flush:
                         frame_queue.put(True) # flush
                 else:
                     frame_queue.put(audio.frame_data)
@@ -49,14 +49,18 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
             with io.BytesIO(audio.get_wav_data()) as audio_file:
                 segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts))
             segments = list(segments)
-            if len(segments) > rumination > 0:
-                done_src = ''.join(segment.text for segment in segments[:-rumination])
-                curr_src = ''.join(segment.text for segment in segments[-rumination:])
-                window = window[int(segments[-rumination - 1].end * mic.SAMPLE_WIDTH * mic.SAMPLE_RATE):]
-                prompts.extend(segment.text for segment in segments[:-rumination])
-            else:
-                done_src = ''
-                curr_src = ''.join(segment.text for segment in segments)
+            start = info.duration - rumination
+            i = 0
+            for segment in segments:
+                if segment.end > start:
+                    if segment.start < start:
+                        start = segment.start
+                    break
+                i += 1
+            done_src = ''.join(segment.text for segment in segments[:i])
+            curr_src = ''.join(segment.text for segment in segments[i:])
+            window = window[max(0, int(start * mic.SAMPLE_RATE) * mic.SAMPLE_WIDTH):]
+            prompts.extend(segment.text for segment in segments[:i])
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
         ts2tl_queue.put(False)
@@ -103,10 +107,10 @@ def main():
     parser.add_argument('--device', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
     parser.add_argument('--patience', type = float, default = 1.0, help = 'time to wait for speech before a pause is detected')
-    parser.add_argument('--flush', action = 'store_true', help = 'flush the iteration window, reset the prompt and start a new paragraph after a pause')
-    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of completed segments used as prompt for the next segment, 0 for unlimited')
+    parser.add_argument('--flush', action = 'store_true', help = 'flush the transcribing window, reset the prompt and start a new paragraph after a pause')
+    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment of each paragraph')
-    parser.add_argument('--rumination', type = int, default = 1, help = 'maximum number of segments retained in the iteration window, 0 for unlimited (and flush on pause will be forcibly enabled)')
+    parser.add_argument('--rumination', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation, English by default')
     parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
