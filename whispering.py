@@ -15,7 +15,7 @@ def translate(text, source, target, timeout):
         return [(s, t) for t, s, *infos in ans]
     except:
         return [(text, 'Cannot connect to the translation service.')]
-def transcribe(size, device, latency, patience, flush, memory, prompt, rumination, source, target, timeout, tui):
+def transcribe(size, device, latency, prompt, memory, patience, source, target, timeout, tui):
     model = WhisperModel(size)
     recognizer = sr.Recognizer()
     mic = sr.Microphone(device)
@@ -28,13 +28,7 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
         frame_queue.put(True) # initialize
         with mic:
             while listen_flag[0]:
-                try:
-                    audio = recognizer.listen(mic, timeout = patience, phrase_time_limit = latency)
-                except sr.WaitTimeoutError:
-                    if flush:
-                        frame_queue.put(True) # flush
-                else:
-                    frame_queue.put(audio.frame_data)
+                frame_queue.put(recognizer.record(mic, duration = latency).frame_data)
         frame_queue.put(False) # finalize
     def transc():
         while frame := frame_queue.get():
@@ -47,9 +41,9 @@ def transcribe(size, device, latency, patience, flush, memory, prompt, ruminatio
             window.extend(frame)
             audio = sr.AudioData(window, mic.SAMPLE_RATE, mic.SAMPLE_WIDTH)
             with io.BytesIO(audio.get_wav_data()) as audio_file:
-                segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts))
+                segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts), vad_filter = True)
             segments = list(segments)
-            start = info.duration - rumination
+            start = info.duration - patience
             i = 0
             for segment in segments:
                 if segment.end > start:
@@ -103,11 +97,9 @@ def main():
     parser.add_argument('--size', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')
     parser.add_argument('--device', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
-    parser.add_argument('--patience', type = float, default = 1.0, help = 'time to wait for speech before a pause is detected')
-    parser.add_argument('--flush', action = 'store_true', help = 'flush the transcribing window, reset the prompt and start a new paragraph after a pause')
-    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment of each paragraph')
-    parser.add_argument('--rumination', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
+    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
+    parser.add_argument('--patience', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
     parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
     parser.add_argument('--target', type = str, default = 'en', help = 'target language for translation, English by default')
     parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
@@ -121,6 +113,6 @@ def main():
         else:
             print('No such microphone device, fallback to default.')
             args.device = None
-    transcribe(args.size, args.device, args.latency, args.patience, args.flush, args.memory, args.prompt, args.rumination, args.source, args.target, args.timeout, args.tui)
+    transcribe(args.size, args.device, args.latency, args.prompt, args.memory, args.patience, args.source, args.target, args.timeout, args.tui)
 if __name__ == '__main__':
     main()
