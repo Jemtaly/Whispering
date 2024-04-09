@@ -70,7 +70,7 @@ def transcribe(size, device, latency, prompt, memory, patience, source, target, 
                 test_src = done_src + ' test.' # test if the last sentence is complete
                 done_snt = translate(done_src, source, target, timeout)
                 test_snt = translate(test_src, source, target, timeout)
-                if len(test_snt) == len(done_snt) + 1 and done_snt[-1][1] == test_snt[-2][1]:
+                if len(test_snt) == len(done_snt) + 1 and all(u == v for (_, u), (_, v) in zip(done_snt, test_snt)):
                     rsrv_src = ''
                 else:
                     rsrv_src = done_snt.pop(-1)[0]

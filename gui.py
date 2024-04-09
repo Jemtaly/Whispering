@@ -35,6 +35,9 @@ class Text(tk.Text):
         self.after(100, self.update) # avoid busy waiting
 def show(tsres_queue, tlres_queue):
     root = tk.Tk()
-    Text(root, tsres_queue).pack(expand = True, fill = 'both', side = 'left')
-    Text(root, tlres_queue).pack(expand = True, fill = 'both', side = 'right')
+    Text(root, tsres_queue).grid(row = 0, column = 0, sticky = tk.NSEW)
+    Text(root, tlres_queue).grid(row = 0, column = 1, sticky = tk.NSEW)
+    root.columnconfigure(0, weight = 1)
+    root.columnconfigure(1, weight = 1)
+    root.rowconfigure(0, weight = 1)
     root.mainloop()
