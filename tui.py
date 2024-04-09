@@ -1,11 +1,10 @@
 import curses
-import time
 class Pad:
     def __init__(self, h, w, t, l, res_queue):
         self.pad = curses.newpad(h * 2, w)
         self.h, self.w, self.t, self.l = h, w, t, l
         self.res_queue = res_queue
-        self.add_done('  ')
+        self.add_done('> ')
         self.last = None
         self.refresh()
     def refresh(self):
@@ -40,7 +39,7 @@ class Pad:
     def update(self):
         while not self.res_queue.empty():
             res = self.res_queue.get()
-            if res is not True:
+            if res is not None:
                 done, curr = res
                 self.load_pos()
                 self.add_done(done)
@@ -51,34 +50,48 @@ class Pad:
                 self.load_pos()
                 self.add_done(done)
                 self.add_done('\n')
-                self.add_done('  ')
+                self.add_done('> ')
                 self.last = None
             self.refresh()
-def show(tsres_queue, tlres_queue):
+def show(listen_flag, tsres_queue, tlres_queue):
     stdscr = curses.initscr()
+    curses.setupterm()
     curses.curs_set(0)
+    curses.noecho()
     stdscr.clear()
+    stdscr.timeout(100)
     h, w = curses.LINES, curses.COLS
-    stdscr.hline(    0,          1, curses.ACS_HLINE, w - 3)
-    stdscr.hline(h - 1,          1, curses.ACS_HLINE, w - 3)
-    stdscr.vline(    1,          0, curses.ACS_VLINE, h - 2)
-    stdscr.vline(    1, w      - 2, curses.ACS_VLINE, h - 2)
-    stdscr.vline(    1, w // 2 - 1, curses.ACS_VLINE, h - 2)
-    stdscr.addch(    0,          0, curses.ACS_ULCORNER)
-    stdscr.addch(h - 1,          0, curses.ACS_LLCORNER)
-    stdscr.addch(    0, w      - 2, curses.ACS_URCORNER)
-    stdscr.addch(h - 1, w      - 2, curses.ACS_LRCORNER)
-    stdscr.addch(    0, w // 2 - 1, curses.ACS_TTEE)
-    stdscr.addch(h - 1, w // 2 - 1, curses.ACS_BTEE)
-    stdscr.refresh()
-    ts_win = Pad(h - 2, w // 2 - 4, 1,          2, tsres_queue)
-    tl_win = Pad(h - 2, w // 2 - 4, 1, w // 2 + 1, tlres_queue)
+    t =          1
+    b = h      - 1
+    l =          0
+    r = w      - 2
+    m = w // 2 - 1
+    stdscr.hline(t    , l + 1, curses.ACS_HLINE, r - l - 1)
+    stdscr.hline(b    , l + 1, curses.ACS_HLINE, r - l - 1)
+    stdscr.vline(t + 1, l    , curses.ACS_VLINE, b - t - 1)
+    stdscr.vline(t + 1, r    , curses.ACS_VLINE, b - t - 1)
+    stdscr.vline(t + 1, m    , curses.ACS_VLINE, b - t - 1)
+    stdscr.addch(t    , l    , curses.ACS_ULCORNER)
+    stdscr.addch(b    , l    , curses.ACS_LLCORNER)
+    stdscr.addch(t    , r    , curses.ACS_URCORNER)
+    stdscr.addch(b    , r    , curses.ACS_LRCORNER)
+    stdscr.addch(t    , m    , curses.ACS_TTEE)
+    stdscr.addch(b    , m    , curses.ACS_BTEE)
+    stdscr.addstr(0, l, '[R]ecord [P]ause [Q]uit'.rjust(r - l + 1))
+    stdscr.addstr(0, l, 'Paused...   ')
+    ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2, tsres_queue)
+    tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2, tlres_queue)
     while True:
-        try:
-            ts_win.update()
-            tl_win.update()
-            time.sleep(0.1)
-        except KeyboardInterrupt:
+        stdscr.refresh()
+        ts_win.update()
+        tl_win.update()
+        key = stdscr.getch()
+        if key == ord('q') or key == ord('Q'):
             break
-    curses.curs_set(1)
+        elif key == ord('r') or key == ord('R'):
+            listen_flag[0] = True
+            stdscr.addstr(0, l, 'Recording...')
+        elif key == ord('p') or key == ord('P'):
+            listen_flag[0] = False
+            stdscr.addstr(0, l, 'Paused...   ')
     curses.endwin()

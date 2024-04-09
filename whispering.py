@@ -15,29 +15,13 @@ def translate(text, source, target, timeout):
         return [(s, t) for t, s, *infos in ans]
     except:
         return [(text, 'Cannot connect to the translation service.')]
-def transcribe(size, device, latency, prompt, memory, patience, source, target, timeout, tui):
-    model = WhisperModel(size)
-    recognizer = sr.Recognizer()
-    mic = sr.Microphone(device)
-    listen_flag = [True]
+def repeat(repeat_flag, listen_flag, tsres_queue, tlres_queue, model, mic, prompt, memory, patience, source, target, timeout):
     frame_queue = DataQueue()
     ts2tl_queue = PairQueue()
-    tsres_queue = PairQueue()
-    tlres_queue = PairQueue()
-    def listen():
-        frame_queue.put(True) # initialize
-        with mic:
-            while listen_flag[0]:
-                frame_queue.put(recognizer.record(mic, duration = latency).frame_data)
-        frame_queue.put(False) # finalize
-    def transc():
+    def ts():
+        window = bytearray()
+        prompts = collections.deque([] if prompt is None else [prompt], memory or None)
         while frame := frame_queue.get():
-            if frame is True:
-                window = bytearray()
-                prompts = collections.deque([] if prompt is None else [prompt], memory or None)
-                ts2tl_queue.put(True)
-                tsres_queue.put(True)
-                continue
             window.extend(frame)
             audio = sr.AudioData(window, mic.SAMPLE_RATE, mic.SAMPLE_WIDTH)
             with io.BytesIO(audio.get_wav_data()) as audio_file:
@@ -57,23 +41,16 @@ def transcribe(size, device, latency, prompt, memory, patience, source, target, 
             prompts.extend(segment.text for segment in segments[:i])
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
-        ts2tl_queue.put(False)
-    def transl():
+        tsres_queue.put(None)
+        ts2tl_queue.put(None)
+    def tl():
+        rsrv_src = ''
         while ts2tl := ts2tl_queue.get():
-            if ts2tl is True:
-                rsrv_src = ''
-                tlres_queue.put(True)
-                continue
             done_src, curr_src = ts2tl
             if done_src or rsrv_src:
                 done_src = rsrv_src + done_src
-                test_src = done_src + ' test.' # test if the last sentence is complete
                 done_snt = translate(done_src, source, target, timeout)
-                test_snt = translate(test_src, source, target, timeout)
-                if len(test_snt) == len(done_snt) + 1 and all(u == v for (_, u), (_, v) in zip(done_snt, test_snt)):
-                    rsrv_src = ''
-                else:
-                    rsrv_src = done_snt.pop(-1)[0]
+                rsrv_src = done_snt.pop(-1)[0]
                 done_tgt = ''.join(t for s, t in done_snt)
             else:
                 done_tgt = ''
@@ -81,22 +58,31 @@ def transcribe(size, device, latency, prompt, memory, patience, source, target, 
             curr_snt = translate(curr_src, source, target, timeout)
             curr_tgt = ''.join(t for s, t in curr_snt)
             tlres_queue.put((done_tgt, curr_tgt))
-    listen_thread = threading.Thread(target = listen, daemon = True)
-    transc_thread = threading.Thread(target = transc, daemon = True)
-    transl_thread = threading.Thread(target = transl, daemon = True)
-    listen_thread.start()
-    transc_thread.start()
-    transl_thread.start()
-    __import__('tui' if tui else 'gui').show(tsres_queue, tlres_queue)
-    listen_flag[0] = False
-    listen_thread.join()
-    transc_thread.join()
-    transl_thread.join()
+        tlres_queue.put(None)
+    listen = False
+    with mic:
+        while repeat_flag[0]:
+            if not listen and listen_flag[0]:
+                ts_thread = threading.Thread(target = ts)
+                tl_thread = threading.Thread(target = tl)
+                ts_thread.start()
+                tl_thread.start()
+            if listen and not listen_flag[0]:
+                frame_queue.put(None)
+                ts_thread.join()
+                tl_thread.join()
+            listen = listen_flag[0]
+            chunk = mic.stream.read(mic.CHUNK)
+            if listen:
+                frame_queue.put(chunk)
+    if listen:
+        frame_queue.put(None)
+        ts_thread.join()
+        tl_thread.join()
 def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
-    parser.add_argument('--size', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')
-    parser.add_argument('--device', type = str, default = None, help = 'microphone device name')
-    parser.add_argument('--latency', type = float, default = 1.0, help = 'latency between speech and transcription')
+    parser.add_argument('--model', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')
+    parser.add_argument('--mic', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--prompt', type = str, default = None, help = 'initial prompt for the first segment of each paragraph')
     parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--patience', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
@@ -105,14 +91,25 @@ def main():
     parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
     parser.add_argument('--tui', action = 'store_true', help = 'use text-based user interface (curses) instead of graphical user interface (tkinter)')
     args = parser.parse_args()
-    if args.device is not None:
-        for device, name in enumerate(sr.Microphone.list_microphone_names()):
-            if args.device in name:
-                args.device = device
+    if args.mic is None:
+        index = None
+    else:
+        for index, name in enumerate(sr.Microphone.list_microphone_names()):
+            if args.mic in name:
                 break
         else:
             print('No such microphone device, fallback to default.')
-            args.device = None
-    transcribe(args.size, args.device, args.latency, args.prompt, args.memory, args.patience, args.source, args.target, args.timeout, args.tui)
+            index = None
+    mic = sr.Microphone(index)
+    model = WhisperModel(args.model)
+    repeat_flag = [True]
+    listen_flag = [False]
+    tsres_queue = PairQueue()
+    tlres_queue = PairQueue()
+    repeat_thread = threading.Thread(target = repeat, args = (repeat_flag, listen_flag, tsres_queue, tlres_queue, model, mic, args.prompt, args.memory, args.patience, args.source, args.target, args.timeout))
+    repeat_thread.start()
+    __import__('tui' if args.tui else 'gui').show(listen_flag, tsres_queue, tlres_queue)
+    repeat_flag[0] = False
+    repeat_thread.join()
 if __name__ == '__main__':
     main()
