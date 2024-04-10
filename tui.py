@@ -114,13 +114,13 @@ def show(mic, model, memory, patience, timeout, prompt, source, target):
 def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
     parser.add_argument('--mic', type = str, default = None, help = 'microphone device name')
-    parser.add_argument('--model', type = str, choices = ['tiny', 'base', 'small', 'medium', 'large'], default = 'base', help = 'size of the model to use')
-    parser.add_argument('--memory', type = int, default = 3, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
+    parser.add_argument('--model', type = str, choices = core.models, default = 'base', help = 'size of the model to use')
+    parser.add_argument('--memory', type = int, default = None, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--patience', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
-    parser.add_argument('--timeout', type = float, default = None, help = 'timeout for the translation service')
+    parser.add_argument('--timeout', type = float, default = 5.0, help = 'timeout for the translation service')
     parser.add_argument('--prompt', type = str, default = '', help = 'initial prompt for the first segment of each paragraph')
-    parser.add_argument('--source', type = str, default = None, help = 'source language for translation, auto-detect if not specified')
-    parser.add_argument('--target', type = str, default = None, help = 'target language for translation, no translation if not specified')
+    parser.add_argument('--source', type = str, default = None, choices = core.sources, help = 'source language for translation, auto-detect if not specified')
+    parser.add_argument('--target', type = str, default = None, choices = core.targets, help = 'target language for translation, no translation if not specified')
     args = parser.parse_args()
     show(args.mic, args.model, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target)
 if __name__ == '__main__':
