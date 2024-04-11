@@ -28,7 +28,7 @@ def translate(text, source, target, timeout):
         return [(s, t) for t, s, *infos in ans]
     except:
         return [(text, 'Translation service is unavailable.')]
-def process(index, model, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, controllable):
+def process(index, model, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready):
     def ts():
         window = bytearray()
         prompts = collections.deque([prompt], memory)
@@ -79,12 +79,11 @@ def process(index, model, memory, patience, timeout, prompt, source, target, tsr
             tl_thread = threading.Thread(target = tl)
             ts_thread.start()
             tl_thread.start()
-            controllable[0] = True
-            while controllable[0]:
+            ready[0] = True
+            while ready[0]:
                 frame_queue.put(mic.stream.read(mic.CHUNK))
             frame_queue.put(None)
             ts_thread.join()
             tl_thread.join()
-            controllable[0] = True
-    except Exception as e:
-        controllable[0] = e
+    finally:
+        ready[0] = None

@@ -58,7 +58,6 @@ class Pad:
                 self.add_done('> ')
         self.refresh()
 def show(mic, model, memory, patience, timeout, prompt, source, target):
-    controllable = [True]
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -82,35 +81,36 @@ def show(mic, model, memory, patience, timeout, prompt, source, target):
     stdscr.addch(b    , r    , curses.ACS_LRCORNER)
     stdscr.addch(t    , m    , curses.ACS_TTEE)
     stdscr.addch(b    , m    , curses.ACS_BTEE)
-    stdscr.addstr(0, l, '<Space> to start/stop, <Q> to quit'.rjust(r - l + 1))
     ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2)
     tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2)
-    state = 'Stopped...'
+    ready = [None]
+    state = 'Stopped'
     while True:
-        stdscr.addstr(0, l, state.ljust(12))
+        stdscr.addstr(0, l, '<Space> to start/stop, <Q> to quit'.rjust(r - l + 1))
+        stdscr.addstr(0, l, state)
         stdscr.refresh()
         ts_win.update()
         tl_win.update()
         key = stdscr.getch()
         if key == ord('q') or key == ord('Q'):
             break
-        elif state == 'Stopped...':
+        elif state.startswith('Stopped'):
             if key == ord(' '):
-                controllable[0] = False
-                threading.Thread(target = core.process, args = (core.get_mic_index(mic), model, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, controllable), daemon = True).start()
+                ready[0] = False
+                threading.Thread(target = core.process, args = (core.get_mic_index(mic), model, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready), daemon = True).start()
                 state = 'Starting...'
-        elif state == 'Started...':
+        elif state.startswith('Started'):
             if key == ord(' '):
-                controllable[0] = False
+                ready[0] = False
                 state = 'Stopping...'
-        elif state == 'Stopping...':
-            if controllable[0] is True:
-                state = 'Stopped...'
-        elif state == 'Starting...':
-            if controllable[0] is True:
-                state = 'Started...'
-            if isinstance(controllable[0], Exception):
-                state = 'Stopped...'
+        elif state.startswith('Stopping...'):
+            if ready[0] is None:
+                state = 'Stopped'
+        elif state.startswith('Starting...'):
+            if ready[0] is True:
+                state = 'Started'
+            if ready[0] is None:
+                state = 'Stopped'
     curses.endwin()
 def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
