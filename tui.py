@@ -10,7 +10,6 @@ class Pad:
         self.h, self.w, self.t, self.l = h, w, t, l
         self.res_queue = PairQueue()
         self.add_done('> ')
-        self.last = None
         self.refresh()
     def refresh(self):
         self.pad.refresh(0, 0, self.t, self.l, self.t + self.h - 1, self.l + self.w - 1)
@@ -29,6 +28,7 @@ class Pad:
             self.pad.scrollok(False)
             self.pad.move(y - t, x)
             self.y -= t
+        self.last += curr
     def add_done(self, done):
         self.pad.scrollok(True)
         self.pad.addstr(done)
@@ -41,6 +41,7 @@ class Pad:
             self.pad.scrollok(False)
             self.pad.move(y - t, x)
         self.y, self.x = self.pad.getyx()
+        self.last = ''
     def update(self):
         while not self.res_queue.empty():
             res = self.res_queue.get()
@@ -49,18 +50,15 @@ class Pad:
                 self.load_pos()
                 self.add_done(done)
                 self.add_curr(curr)
-                self.last = curr
-            elif self.last is not None:
+            else:
                 done = self.last
                 self.load_pos()
                 self.add_done(done)
                 self.add_done('\n')
                 self.add_done('> ')
-                self.last = None
         self.refresh()
 def show(mic, model, memory, patience, timeout, prompt, source, target):
-    mic, model = core.prepare(mic, model)
-    listen_flag = [False]
+    controllable = [True]
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -85,37 +83,40 @@ def show(mic, model, memory, patience, timeout, prompt, source, target):
     stdscr.addch(t    , m    , curses.ACS_TTEE)
     stdscr.addch(b    , m    , curses.ACS_BTEE)
     stdscr.addstr(0, l, '<Space> to start/stop, <Q> to quit'.rjust(r - l + 1))
-    stdscr.addstr(0, l, 'Paused...    ')
-    stdscr.refresh()
     ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2)
     tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2)
+    state = 'Stopped...'
     while True:
-        key = stdscr.getch()
+        stdscr.addstr(0, l, state.ljust(12))
+        stdscr.refresh()
         ts_win.update()
         tl_win.update()
-        if key == ord(' '):
-            if listen_flag[0]:
-                stdscr.addstr(0, l, 'Pausing...   ')
-                stdscr.refresh()
-                listen_flag[0] = False
-                thread.join()
-                del thread
-                stdscr.addstr(0, l, 'Paused...    ')
-                stdscr.refresh()
-            else:
-                listen_flag[0] = True
-                thread = threading.Thread(target = core.process, args = (mic, model, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, listen_flag), daemon = True)
-                thread.start()
-                stdscr.addstr(0, l, 'Listening... ')
-                stdscr.refresh()
-        elif key == ord('q') or key == ord('Q'):
+        key = stdscr.getch()
+        if key == ord('q') or key == ord('Q'):
             break
+        elif state == 'Stopped...':
+            if key == ord(' '):
+                controllable[0] = False
+                threading.Thread(target = core.process, args = (core.get_mic_index(mic), model, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, controllable), daemon = True).start()
+                state = 'Starting...'
+        elif state == 'Started...':
+            if key == ord(' '):
+                controllable[0] = False
+                state = 'Stopping...'
+        elif state == 'Stopping...':
+            if controllable[0] is True:
+                state = 'Stopped...'
+        elif state == 'Starting...':
+            if controllable[0] is True:
+                state = 'Started...'
+            if isinstance(controllable[0], Exception):
+                state = 'Stopped...'
     curses.endwin()
 def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
     parser.add_argument('--mic', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--model', type = str, choices = core.models, default = 'base', help = 'size of the model to use')
-    parser.add_argument('--memory', type = int, default = None, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
+    parser.add_argument('--memory', type = int, default = 1, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--patience', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
     parser.add_argument('--timeout', type = float, default = 5.0, help = 'timeout for the translation service')
     parser.add_argument('--prompt', type = str, default = '', help = 'initial prompt for the first segment of each paragraph')
