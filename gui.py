@@ -25,7 +25,6 @@ class Text(tk.Text):
                 self.record = self.index('end-1c')
                 self.insert('end', curr, 'curr')
             else:
-                print('done')
                 done = self.get(self.record, 'end-1c')
                 self.delete(self.record, 'end')
                 self.insert('end', done, 'done')
@@ -56,6 +55,8 @@ class Show(tk.Tk):
         self.mic_button = ttk.Button(self.top_frame, text = 'Refresh', command = lambda: self.mic_combo.config(values = ['default'] + core.get_mic_names()))
         self.model_label = ttk.Label(self.top_frame, text = 'Model size or path:')
         self.model_combo = ttk.Combobox(self.top_frame, values = core.models, state = 'normal')
+        self.vad_check = ttk.Checkbutton(self.top_frame, text = 'VAD', onvalue = True, offvalue = False)
+        self.vad_check.state(('!alternate', 'selected'))
         self.memory_label = ttk.Label(self.top_frame, text = 'Memory:')
         self.memory_spin = ttk.Spinbox(self.top_frame, from_ = 1, to = 10, increment = 1, state = 'readonly')
         self.memory_spin.set(3)
@@ -70,6 +71,7 @@ class Show(tk.Tk):
         self.mic_button.pack(side = 'left', padx = (0, 5))
         self.model_label.pack(side = 'left', padx = (5, 5))
         self.model_combo.pack(side = 'left', padx = (0, 5), fill = 'x', expand = True)
+        self.vad_check.pack(side = 'left', padx = (0, 5))
         self.memory_label.pack(side = 'left', padx = (5, 5))
         self.memory_spin.pack(side = 'left', padx = (0, 5))
         self.patience_label.pack(side = 'left', padx = (5, 5))
@@ -98,13 +100,14 @@ class Show(tk.Tk):
         self.control_button.config(text = 'Starting...', command = None, state = 'disabled')
         index = None if self.mic_combo.current() == 0 else self.mic_combo.current() - 1
         model = self.model_combo.get()
+        vad = self.vad_check.instate(('selected',))
         memory = int(self.memory_spin.get())
         patience = float(self.patience_spin.get())
         timeout = float(self.timeout_spin.get())
         prompt = self.prompt_entry.get()
         source = None if self.source_combo.get() == 'auto' else self.source_combo.get()
         target = None if self.target_combo.get() == 'none' else self.target_combo.get()
-        threading.Thread(target = core.process, args = (index, model, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready), daemon = True).start()
+        threading.Thread(target = core.process, args = (index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready), daemon = True).start()
         self.starting()
     def starting(self):
         if self.ready[0] is True:

@@ -17,25 +17,21 @@ class Queue:
                 self.cond.wait()
             return self.queue.popleft()
 class DataQueue(Queue):
-    def get(self):
+    def put(self, item):
         with self.cond:
-            while not self.queue:
-                self.cond.wait()
-            if not isinstance(self.queue[0], bytes):
-                return self.queue.popleft()
-            data = self.queue.popleft()
-            while self.queue and isinstance(self.queue[0], bytes):
-                data += self.queue.popleft()
-            return data
+            if self.queue and self.queue[-1] is not None and item is not None:
+                self.queue[-1].extend(item)
+            else:
+                self.queue.append(item)
+            self.cond.notify()
 class PairQueue(Queue):
-    def get(self):
+    def put(self, item):
         with self.cond:
-            while not self.queue:
-                self.cond.wait()
-            if not isinstance(self.queue[0], tuple):
-                return self.queue.popleft()
-            done, curr = self.queue.popleft()
-            while self.queue and isinstance(self.queue[0], tuple):
-                temp, curr = self.queue.popleft()
+            if self.queue and self.queue[-1] is not None and item is not None:
+                done, curr = self.queue[-1]
+                temp, curr = item
                 done += temp
-            return done, curr
+                self.queue[-1] = done, curr
+            else:
+                self.queue.append(item)
+            self.cond.notify()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import curses
-import threading
 import argparse
+import threading
 import core
 from que import PairQueue
 class Pad:
@@ -57,7 +57,7 @@ class Pad:
                 self.add_done('\n')
                 self.add_done('> ')
         self.refresh()
-def show(mic, model, memory, patience, timeout, prompt, source, target):
+def show(mic, model, vad, memory, patience, timeout, prompt, source, target):
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -84,10 +84,10 @@ def show(mic, model, memory, patience, timeout, prompt, source, target):
     ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2)
     tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2)
     ready = [None]
+    instr = ' <Space> Start/Stop <Q> Quit'
     state = 'Stopped'
     while True:
-        stdscr.addstr(0, l, '<Space> to start/stop, <Q> to quit'.rjust(r - l + 1))
-        stdscr.addstr(0, l, state)
+        stdscr.addstr(0, l, state + ' ' * (r - l + 1 - len(state) - len(instr)) + instr)
         stdscr.refresh()
         ts_win.update()
         tl_win.update()
@@ -97,7 +97,7 @@ def show(mic, model, memory, patience, timeout, prompt, source, target):
         elif state.startswith('Stopped'):
             if key == ord(' '):
                 ready[0] = False
-                threading.Thread(target = core.process, args = (core.get_mic_index(mic), model, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready), daemon = True).start()
+                threading.Thread(target = core.process, args = (core.get_mic_index(mic), model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready), daemon = True).start()
                 state = 'Starting...'
         elif state.startswith('Started'):
             if key == ord(' '):
@@ -116,6 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description = 'Transcribe and translate speech in real-time.')
     parser.add_argument('--mic', type = str, default = None, help = 'microphone device name')
     parser.add_argument('--model', type = str, choices = core.models, default = 'base', help = 'size of the model to use')
+    parser.add_argument('--vad', action = 'store_true', help = 'enable voice activity detection')
     parser.add_argument('--memory', type = int, default = 1, help = 'maximum number of previous segments to be used as prompt for audio in the transcribing window')
     parser.add_argument('--patience', type = float, default = 5.0, help = 'minimum time to wait for subsequent speech before move a completed segment out of the transcribing window')
     parser.add_argument('--timeout', type = float, default = 5.0, help = 'timeout for the translation service')
@@ -123,6 +124,6 @@ def main():
     parser.add_argument('--source', type = str, default = None, choices = core.sources, help = 'source language for translation, auto-detect if not specified')
     parser.add_argument('--target', type = str, default = None, choices = core.targets, help = 'target language for translation, no translation if not specified')
     args = parser.parse_args()
-    show(args.mic, args.model, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target)
+    show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target)
 if __name__ == '__main__':
     main()

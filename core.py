@@ -28,20 +28,20 @@ def translate(text, source, target, timeout):
         return [(s, t) for t, s, *infos in ans]
     except:
         return [(text, 'Translation service is unavailable.')]
-def process(index, model, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready):
+def process(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready):
     def ts():
-        window = bytearray()
         prompts = collections.deque([prompt], memory)
+        window = bytearray()
         while frame := frame_queue.get():
             window.extend(frame)
             audio = sr.AudioData(window, mic.SAMPLE_RATE, mic.SAMPLE_WIDTH)
             with io.BytesIO(audio.get_wav_data()) as audio_file:
-                segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts), vad_filter = True)
-            segments = list(segments)
-            start = info.duration - patience
+                segments, info = model.transcribe(audio_file, language = source, initial_prompt = ''.join(prompts), vad_filter = vad)
+            segments = [segment for segment in segments]
+            start = max(len(window) // mic.SAMPLE_WIDTH / mic.SAMPLE_RATE - patience, 0.0)
             i = 0
             for segment in segments:
-                if segment.end > start:
+                if segment.end >= start:
                     if segment.start < start:
                         start = segment.start
                     break
@@ -49,7 +49,7 @@ def process(index, model, memory, patience, timeout, prompt, source, target, tsr
             done_src = ''.join(segment.text for segment in segments[:i])
             curr_src = ''.join(segment.text for segment in segments[i:])
             prompts.extend(segment.text for segment in segments[:i])
-            window = window[max(0, int(start * mic.SAMPLE_RATE) * mic.SAMPLE_WIDTH):]
+            del window[:int(start * mic.SAMPLE_RATE) * mic.SAMPLE_WIDTH]
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
         ts2tl_queue.put(None)
@@ -61,7 +61,7 @@ def process(index, model, memory, patience, timeout, prompt, source, target, tsr
             if done_src or rsrv_src:
                 done_src = rsrv_src + done_src
                 done_snt = translate(done_src, source, target, timeout)
-                rsrv_src = done_snt.pop(-1)[0]
+                rsrv_src = done_snt.pop()[0]
                 done_tgt = ''.join(t for s, t in done_snt)
             else:
                 done_tgt = ''
@@ -81,7 +81,7 @@ def process(index, model, memory, patience, timeout, prompt, source, target, tsr
             tl_thread.start()
             ready[0] = True
             while ready[0]:
-                frame_queue.put(mic.stream.read(mic.CHUNK))
+                frame_queue.put(bytearray(mic.stream.read(mic.CHUNK)))
             frame_queue.put(None)
             ts_thread.join()
             tl_thread.join()
