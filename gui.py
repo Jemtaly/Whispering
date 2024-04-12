@@ -34,7 +34,7 @@ class Text(tk.Text):
             self.see('end')
             self.config(state = 'disabled')
         self.after(100, self.update) # avoid busy waiting
-class Show(tk.Tk):
+class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('Whispering')
@@ -78,15 +78,15 @@ class Show(tk.Tk):
         self.patience_spin.pack(side = 'left', padx = (0, 5))
         self.timeout_label.pack(side = 'left', padx = (5, 5))
         self.timeout_spin.pack(side = 'left', padx = (0, 5))
-        self.prompt_label = ttk.Label(self.bot_frame, text = 'Prompt:')
-        self.prompt_entry = ttk.Entry(self.bot_frame, state = 'normal')
-        self.control_button = ttk.Button(self.bot_frame, text = 'Start', command = self.start, state = 'normal')
         self.source_label = ttk.Label(self.bot_frame, text = 'Source:')
         self.source_combo = ttk.Combobox(self.bot_frame, values = ['auto'] + core.sources, state = 'readonly')
         self.source_combo.current(0)
         self.target_label = ttk.Label(self.bot_frame, text = 'Target:')
         self.target_combo = ttk.Combobox(self.bot_frame, values = ['none'] + core.targets, state = 'readonly')
         self.target_combo.current(0)
+        self.prompt_label = ttk.Label(self.bot_frame, text = 'Prompt:')
+        self.prompt_entry = ttk.Entry(self.bot_frame, state = 'normal')
+        self.control_button = ttk.Button(self.bot_frame, text = 'Start', command = self.start, state = 'normal')
         self.source_label.pack(side = 'left', padx = (5, 5))
         self.source_combo.pack(side = 'left', padx = (0, 5))
         self.target_label.pack(side = 'left', padx = (5, 5))
@@ -127,4 +127,4 @@ class Show(tk.Tk):
             return
         self.after(100, self.stopping)
 if __name__ == '__main__':
-    Show().mainloop()
+    App().mainloop()
