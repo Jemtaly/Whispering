@@ -16,7 +16,7 @@ class Text(tk.Text):
         self.config(state = 'disabled')
         self.update()
     def update(self):
-        while not self.res_queue.empty():
+        while self.res_queue:
             self.config(state = 'normal')
             if res := self.res_queue.get():
                 done, curr = res

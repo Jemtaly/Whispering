@@ -43,7 +43,7 @@ class Pad:
         self.y, self.x = self.pad.getyx()
         self.last = ''
     def update(self):
-        while not self.res_queue.empty():
+        while self.res_queue:
             res = self.res_queue.get()
             if res is not None:
                 done, curr = res
