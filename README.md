@@ -10,28 +10,20 @@ A real-time transcription and translation tool implemented in Python based on th
 
 ## Usage
 
-```
-usage: gui.py [-h] [--mic MIC]
-              [--model {tiny,base,small,medium,large-v1,large-v2,large-v3,large}]
-              [--memory MEMORY] [--patience PATIENCE] [--timeout TIMEOUT]
+The program is available in both GUI and TUI versions.
 
-Transcribe and translate speech in real-time.
-
-options:
-  -h, --help            show this help message and exit
-  --mic MIC             microphone device name
-  --model {tiny,base,small,medium,large-v1,large-v2,large-v3,large}
-                        size of the model to use
-  --memory MEMORY       maximum number of previous segments to be used as prompt for audio
-                        in the transcribing window
-  --patience PATIENCE   minimum time to wait for subsequent speech before move a completed
-                        segment out of the transcribing window
-  --timeout TIMEOUT     timeout for the translation service
-```
+- GUI
 
 ```
-usage: tui.py [-h] [--mic MIC]
-              [--model {tiny,base,small,medium,large-v1,large-v2,large-v3,large}]
+gui.py
+```
+
+![Screenshot](https://github.com/Jemtaly/Whispering/assets/83796250/c68fcd61-752f-4c16-9c13-231ac4b0d2fc)
+
+- TUI
+
+```
+usage: tui.py [-h] [--mic MIC] [--model MODEL] [--vad]
               [--memory MEMORY] [--patience PATIENCE] [--timeout TIMEOUT]
               [--prompt PROMPT] [--source SOURCE] [--target TARGET]
 
@@ -42,6 +34,7 @@ options:
   --mic MIC             microphone device name
   --model {tiny,base,small,medium,large-v1,large-v2,large-v3,large}
                         size of the model to use
+  --vad                 enable voice activity detection
   --memory MEMORY       maximum number of previous segments to be used as prompt for audio
                         in the transcribing window
   --patience PATIENCE   minimum time to wait for subsequent speech before move a completed
