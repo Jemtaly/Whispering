@@ -1,5 +1,6 @@
 # Whispering
-A real-time transcription and translation tool implemented in Python based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library.
+
+Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library and Google translation service. Both GUI and TUI versions are available.
 
 ## Requirements
 
@@ -7,6 +8,13 @@ A real-time transcription and translation tool implemented in Python based on th
 - [fast-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [SpeechRecognition](https://pypi.org/project/SpeechRecognition)
 - [PyAudio](https://pypi.org/project/PyAudio) 0.2.11+
+- If you want to transcript from computer output, you can use virtual audio cable such as [VB-Audio Virtual Cable](https://vb-audio.com/Cable) or [Jack Audio Connection Kit](https://jackaudio.org), or use the `loopback` device in PulseAudio or ALSA.
+
+## Working Principle
+
+When the program starts working, it will take the audio stream in real time from the input device (microphone or computer output) and transcribe it. After a piece of audio is transcribed, the corresponding text fragment will be obtained and output to the screen immediately. In order to avoid inaccurate transcription results due to lack of context or speech being cut off in the middle, the program will temporarily place the segments that have been transcribed but have not yet been fully confirmed in a "transcription window" (displayed as underlined blue text in the GUI app). When the next piece of audio comes, it will be concatenated to the window. The audio in the window is transcribed iteratively, and the transcription results are constantly revised and updated until a sentence is completed and has sufficient subsequent context (determined by the `patience` parameter) before it is moved out of the transcription window (turns into black text). The last few moved-out segments (the number is determined by the `memory` parameter) will be used as prompts for subsequent context to improve the accuracy of transcription.
+
+At the same time, the real-time transcription text fragments will be sent to the Google translation service for translation, and the translation results will also be output to the screen in real time. Users can specify the source language and target language by setting the `source` and `target` parameters. If the source language is not specified, the program will automatically detect the source language. If the target language is not specified, no translation will be performed.
 
 ## Usage
 
@@ -14,9 +22,7 @@ The program is available in both GUI and TUI versions.
 
 - GUI
 
-```
-gui.py
-```
+Simply run the `gui.py` script to start the GUI version of the program.
 
 ![Screenshot](https://github.com/Jemtaly/Whispering/assets/83796250/c68fcd61-752f-4c16-9c13-231ac4b0d2fc)
 
