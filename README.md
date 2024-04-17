@@ -16,6 +16,8 @@ When the program starts working, it will take the audio stream in real time from
 
 At the same time, the real-time transcription text fragments will be sent to the Google translation service for translation, and the translation results will also be output to the screen in real time. Users can specify the source language and target language by setting the `source` and `target` parameters. If the source language is not specified, the program will automatically detect the source language. If the target language is not specified, no translation will be performed.
 
+Based on the above principle, the program can improve transcription efficiency and real-time performance as much as possible while ensuring accuracy.
+
 ## Usage
 
 The program is available in both GUI and TUI versions.
