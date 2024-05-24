@@ -3,12 +3,12 @@ import curses
 import argparse
 import threading
 import core
-from que import PairQueue
+from cmque import PairDeque, Queue
 class Pad:
     def __init__(self, h, w, t, l):
         self.pad = curses.newpad(h * 2, w)
         self.h, self.w, self.t, self.l = h, w, t, l
-        self.res_queue = PairQueue()
+        self.res_queue = Queue(PairDeque())
         self.add_done('> ')
         self.refresh()
     def refresh(self):

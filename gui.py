@@ -3,11 +3,11 @@ import tkinter as tk
 import tkinter.ttk as ttk
 import threading
 import core
-from que import PairQueue
+from cmque import PairDeque, Queue
 class Text(tk.Text):
     def __init__(self, master):
         super().__init__(master)
-        self.res_queue = PairQueue()
+        self.res_queue = Queue(PairDeque())
         self.tag_config('done', foreground = 'black')
         self.tag_config('curr', foreground = 'blue', underline = True)
         self.insert('end', '  ', 'done')
