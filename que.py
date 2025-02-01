@@ -1,9 +1,9 @@
-import collections
+from collections import deque
 import threading
 
 
 class Queue:
-    def __init__(self, deque):
+    def __init__(self, deque: deque):
         self.deque = deque
         self.cond = threading.Condition()
 
@@ -23,7 +23,7 @@ class Queue:
             return self.deque.popleft()
 
 
-class DataDeque(collections.deque):
+class DataDeque(deque):
     def append(self, item):
         if item is None:
             super().append(None)
@@ -33,7 +33,12 @@ class DataDeque(collections.deque):
             super().append(bytearray(item))
 
 
-class PairDeque(collections.deque):
+class DataQueue(Queue):
+    def __init__(self):
+        super().__init__(DataDeque())
+
+
+class PairDeque(deque):
     def append(self, item):
         if item is None:
             super().append(None)
@@ -42,3 +47,8 @@ class PairDeque(collections.deque):
             self[-1][1] += item[1]
         else:
             super().append(list(item))
+
+
+class PairQueue(Queue):
+    def __init__(self):
+        super().__init__(PairDeque())

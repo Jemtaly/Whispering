@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 
-
-import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 
 import core
-from cmque import PairDeque, Queue
+from que import PairQueue
 
 
 class Text(tk.Text):
     def __init__(self, master):
         super().__init__(master)
-        self.res_queue = Queue(PairDeque())
+        self.res_queue = PairQueue()
         self.tag_config("done", foreground="black")
         self.tag_config("curr", foreground="blue", underline=True)
         self.insert("end", "  ", "done")
@@ -62,7 +60,7 @@ class App(tk.Tk):
         self.mic_combo.current(0)
         self.mic_button = ttk.Button(self.top_frame, text="Refresh", command=lambda: self.mic_combo.config(values=["default"] + core.get_mic_names()))
         self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
-        self.model_combo = ttk.Combobox(self.top_frame, values=core.models, state="normal")
+        self.model_combo = ttk.Combobox(self.top_frame, values=core.MODELS, state="normal")
         self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
         self.memory_label = ttk.Label(self.top_frame, text="Memory:")
@@ -87,14 +85,15 @@ class App(tk.Tk):
         self.timeout_label.pack(side="left", padx=(5, 5))
         self.timeout_spin.pack(side="left", padx=(0, 5))
         self.source_label = ttk.Label(self.bot_frame, text="Source:")
-        self.source_combo = ttk.Combobox(self.bot_frame, values=["auto"] + core.sources, state="readonly")
+        self.source_combo = ttk.Combobox(self.bot_frame, values=["auto"] + core.LANGS, state="readonly")
         self.source_combo.current(0)
         self.target_label = ttk.Label(self.bot_frame, text="Target:")
-        self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + core.targets, state="readonly")
+        self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + core.LANGS, state="readonly")
         self.target_combo.current(0)
         self.prompt_label = ttk.Label(self.bot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.bot_frame, state="normal")
-        self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
+        self.control_button = ttk.Button(self.bot_frame)
+        self.stopped()
         self.source_label.pack(side="left", padx=(5, 5))
         self.source_combo.pack(side="left", padx=(0, 5))
         self.target_label.pack(side="left", padx=(5, 5))
@@ -102,11 +101,13 @@ class App(tk.Tk):
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
-        self.ready = [None]
+        self.controller: list[bool] = [False]
+        self.feedback: list[bool | None] = [False]
 
     def start(self):
-        self.ready[0] = False
-        self.control_button.config(text="Starting...", command=None, state="disabled")
+        self.control_button.config(text="Starting...", state="disabled")
+        self.controller[0] = True
+        self.feedback[0] = None
         index = None if self.mic_combo.current() == 0 else self.mic_combo.current() - 1
         model = self.model_combo.get()
         vad = self.vad_check.instate(("selected",))
@@ -116,28 +117,34 @@ class App(tk.Tk):
         prompt = self.prompt_entry.get()
         source = None if self.source_combo.get() == "auto" else self.source_combo.get()
         target = None if self.target_combo.get() == "none" else self.target_combo.get()
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready), daemon=True).start()
+        core.proc(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.controller, self.feedback)
         self.starting()
 
+    def stop(self):
+        self.control_button.config(text="Stopping...", state="disabled")
+        self.controller[0] = False
+        self.stopping()
+
     def starting(self):
-        if self.ready[0] is True:
-            self.control_button.config(text="Stop", command=self.stop, state="normal")
+        if self.feedback[0] is True:
+            self.started()
             return
-        if self.ready[0] is None:
-            self.control_button.config(text="Start", command=self.start, state="normal")
+        if self.feedback[0] is False:
+            self.stopped()
             return
         self.after(100, self.starting)
 
-    def stop(self):
-        self.ready[0] = False
-        self.control_button.config(text="Stopping...", command=None, state="disabled")
-        self.stopping()
-
     def stopping(self):
-        if self.ready[0] is None:
-            self.control_button.config(text="Start", command=self.start, state="normal")
+        if self.feedback[0] is False:
+            self.stopped()
             return
         self.after(100, self.stopping)
+    
+    def started(self):
+        self.control_button.config(text="Stop", command=self.stop, state="normal")
+
+    def stopped(self):
+        self.control_button.config(text="Start", command=self.start, state="normal")
 
 
 if __name__ == "__main__":
