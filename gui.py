@@ -139,7 +139,7 @@ class App(tk.Tk):
             self.stopped()
             return
         self.after(100, self.stopping)
-    
+
     def started(self):
         self.control_button.config(text="Stop", command=self.stop, state="normal")
 

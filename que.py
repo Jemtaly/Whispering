@@ -43,8 +43,8 @@ class PairDeque(deque):
         if item is None:
             super().append(None)
         elif self and self[-1] is not None:
-            self[-1][0] = item[0]
-            self[-1][1] += item[1]
+            self[-1][0] += item[0]
+            self[-1][1] = item[1]
         else:
             super().append(list(item))
 

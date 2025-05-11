@@ -104,7 +104,7 @@ class Processor:
         self.frame_queue = DataQueue()
         self.ts2tl_queue = PairQueue()
 
-    def cc_tast(self):
+    def cc_task(self):
         try:
             with self.mic:
                 while self.controller[0]:
@@ -132,7 +132,7 @@ class Processor:
             self.tlres_queue.put(None)
 
     def run(self):
-        cc_thread = Thread(target=self.cc_tast)
+        cc_thread = Thread(target=self.cc_task)
         ts_thread = Thread(target=self.ts_task)
         tl_thread = Thread(target=self.tl_task)
         cc_thread.start()
