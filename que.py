@@ -1,54 +1,51 @@
 from collections import deque
+from dataclasses import dataclass
+from typing import Generic, TypeVar, Self, Protocol
 import threading
 
 
-class Queue:
-    def __init__(self, deque: deque):
-        self.deque = deque
+class Extendable(Protocol):
+    def extend(self, other: Self, /) -> None:
+        pass
+
+
+T = TypeVar("T", bound=Extendable)
+
+
+class Queue(Generic[T]):
+    def __init__(self):
+        self.deque = deque[T | None]()
         self.cond = threading.Condition()
 
     def __bool__(self):
         with self.cond:
             return bool(self.deque)
 
-    def put(self, item):
+    def put(self, item: T | None):
         with self.cond:
-            self.deque.append(item)
+            if item is None:
+                self.deque.append(None)
+            elif self.deque and (last := self.deque[-1]) is not None:
+                last.extend(item)
+            else:
+                self.deque.append(item)
             self.cond.notify()
 
-    def get(self):
+    def get(self) -> T | None:
         with self.cond:
             while not self.deque:
                 self.cond.wait()
             return self.deque.popleft()
 
 
-class DataDeque(deque):
-    def append(self, item):
-        if item is None:
-            super().append(None)
-        elif self and self[-1] is not None:
-            self[-1].extend(item)
-        else:
-            super().append(bytearray(item))
+@dataclass
+class Pair:
+    done: str
+    curr: str
+
+    def extend(self, other: Self):
+        self.done += other.done
+        self.curr = other.curr
 
 
-class DataQueue(Queue):
-    def __init__(self):
-        super().__init__(DataDeque())
-
-
-class PairDeque(deque):
-    def append(self, item):
-        if item is None:
-            super().append(None)
-        elif self and self[-1] is not None:
-            self[-1][0] += item[0]
-            self[-1][1] = item[1]
-        else:
-            super().append(list(item))
-
-
-class PairQueue(Queue):
-    def __init__(self):
-        super().__init__(PairDeque())
+Data = bytearray
