@@ -1,6 +1,6 @@
 # Whispering
 
-Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library and Google translation service. Both GUI and TUI versions are available.
+Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library and Google translation service.
 
 ## Requirements
 
