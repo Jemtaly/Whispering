@@ -7,6 +7,7 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **Real-time transcription** with iterative refinement for accuracy
 - **Live translation** to 100+ languages via Google Translate
 - **GPU acceleration** with CUDA support for fast inference
+- **Adaptive paragraph detection** based on speech pause patterns
 - **Audio level meter** to verify microphone input
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
@@ -62,6 +63,7 @@ python gui.py
 - **Mic** - Select input device (system default uses PipeWire/PulseAudio)
 - **Model** - Whisper model size (default: large-v3)
 - **VAD** - Voice Activity Detection filter
+- **¶** - Adaptive paragraph detection (inserts line breaks based on pauses)
 - **Device** - Inference device: cpu, cuda, or auto
 - **Memory** - Number of previous segments used as context
 - **Patience** - Seconds to wait before finalizing a segment
@@ -90,6 +92,11 @@ python tui.py [options]
 | `--prompt` | "" | Initial prompt for first segment |
 | `--source` | auto | Source language code |
 | `--target` | none | Target language code |
+| `--no-para` | off | Disable adaptive paragraph detection |
+| `--para-threshold` | 1.5 | Std deviations above mean for paragraph break |
+| `--para-min-pause` | 0.8 | Minimum pause to consider (seconds) |
+| `--para-max-chars` | 500 | Max characters per paragraph |
+| `--para-max-words` | 100 | Max words per paragraph |
 
 **Example:**
 
@@ -159,6 +166,25 @@ This will show:
 **Memory:** Number of previous segments used as context prompt.
 - Too low: Less context, potentially less accurate
 - Too high: Long prompts slow down inference
+
+### Adaptive Paragraph Detection
+
+The paragraph detection feature automatically inserts line breaks based on the speaker's natural pause patterns:
+
+1. **Learning phase:** During the first few segments, uses a fixed 2-second threshold
+2. **Adaptive phase:** Calculates mean and standard deviation of all pauses
+3. **Break detection:** Inserts paragraph break when pause exceeds `mean + (threshold × std_dev)`
+4. **Hard limits:** Forces breaks at `max_chars` or `max_words` regardless of pauses
+
+**How it adapts:**
+- Fast speakers with short pauses: threshold adjusts lower
+- Slow speakers with long pauses: threshold adjusts higher
+- The `min_pause` floor prevents false positives from very brief hesitations
+
+**Tuning tips:**
+- Increase `--para-threshold` (e.g., 2.0) for fewer, longer paragraphs
+- Decrease `--para-threshold` (e.g., 1.0) for more frequent breaks
+- Adjust `--para-min-pause` if natural speech hesitations trigger false breaks
 
 ## CUDA Setup
 

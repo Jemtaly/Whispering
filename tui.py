@@ -69,7 +69,7 @@ class Pad:
         self.refresh()
 
 
-def show(mic, model, vad, memory, patience, timeout, prompt, source, target, device):
+def show(mic, model, vad, memory, patience, timeout, prompt, source, target, device, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100):
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -117,7 +117,7 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target, dev
                 error[0] = None
                 # Get mic index: smart default if not specified
                 mic_index = core.get_mic_index(mic) if mic else core.get_default_device_index()
-                threading.Thread(target=core.proc, args=(mic_index, model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready, device, error, level), daemon=True).start()
+                threading.Thread(target=core.proc, args=(mic_index, model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready, device, error, level, para_detect, para_threshold_std, para_min_pause, para_max_chars, para_max_words), daemon=True).start()
                 state = "Starting..."
         elif state.startswith("Started"):
             if key == ord(" "):
@@ -146,8 +146,15 @@ def main():
     parser.add_argument("--source", type=str, default=None, choices=core.sources, help="source language for translation, auto-detect if not specified")
     parser.add_argument("--target", type=str, default=None, choices=core.targets, help="target language for translation, no translation if not specified")
     parser.add_argument("--device", type=str, default="cuda", choices=core.devices, help="device to use for inference (cpu, cuda, or auto)")
+    # Paragraph detection arguments
+    parser.add_argument("--no-para", action="store_true", help="disable adaptive paragraph detection")
+    parser.add_argument("--para-threshold", type=float, default=1.5, help="std deviations above mean pause for paragraph break (default: 1.5)")
+    parser.add_argument("--para-min-pause", type=float, default=0.8, help="minimum pause duration to consider for break (default: 0.8s)")
+    parser.add_argument("--para-max-chars", type=int, default=500, help="max characters per paragraph (default: 500)")
+    parser.add_argument("--para-max-words", type=int, default=100, help="max words per paragraph (default: 100)")
     args = parser.parse_args()
-    show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target, args.device)
+    show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target, args.device,
+         not args.no_para, args.para_threshold, args.para_min_pause, args.para_max_chars, args.para_max_words)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 import collections
 import io
+import math
 import threading
 import wave
 from urllib.parse import quote
@@ -15,6 +16,157 @@ from faster_whisper import WhisperModel
 
 models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"]
 devices = ["cpu", "cuda", "auto"]
+sources = ["af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh"]
+targets = ["af", "ak", "am", "ar", "as", "ay", "az", "be", "bg", "bho", "bm", "bn", "bs", "ca", "ceb", "ckb", "co", "cs", "cy", "da", "de", "doi", "dv", "ee", "el", "en", "eo", "es", "et", "eu", "fa", "fi", "fil", "fr", "fy", "ga", "gd", "gl", "gn", "gom", "gu", "ha", "haw", "he", "hi", "hmn", "hr", "ht", "hu", "hy", "id", "ig", "ilo", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "kri", "ku", "ky", "la", "lb", "lg", "ln", "lo", "lt", "lus", "lv", "mai", "mg", "mi", "mk", "ml", "mn", "mni-Mtei", "mr", "ms", "mt", "my", "ne", "nl", "no", "nso", "ny", "om", "or", "pa", "pl", "ps", "pt", "qu", "ro", "ru", "rw", "sa", "sd", "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "st", "su", "sv", "sw", "ta", "te", "tg", "th", "ti", "tk", "tl", "tr", "ts", "tt", "ug", "uk", "ur", "uz", "vi", "xh", "yi", "yo", "zh-CN", "zh-TW", "zu"]
+
+
+class ParagraphDetector:
+    """
+    Adaptive paragraph detection based on speech pause patterns.
+    
+    Uses statistical analysis of pause durations to detect "significant" pauses
+    that likely indicate paragraph breaks, while also enforcing hard limits
+    on paragraph length.
+    
+    Parameters:
+        threshold_std: Number of standard deviations above mean for a "significant" pause (default: 1.5)
+        min_pause: Minimum pause duration to consider as potential break (default: 0.8s)
+        max_chars: Maximum characters per paragraph before forced break (default: 500)
+        max_words: Maximum words per paragraph before forced break (default: 100)
+        window_size: Number of recent pauses to use for statistics (default: 30)
+        warmup_count: Minimum pauses needed before adaptive mode (default: 5)
+        warmup_threshold: Fixed threshold during warmup period (default: 2.0s)
+    """
+    
+    def __init__(
+        self,
+        threshold_std=1.5,
+        min_pause=0.8,
+        max_chars=500,
+        max_words=100,
+        window_size=30,
+        warmup_count=5,
+        warmup_threshold=2.0
+    ):
+        self.threshold_std = threshold_std
+        self.min_pause = min_pause
+        self.max_chars = max_chars
+        self.max_words = max_words
+        self.window_size = window_size
+        self.warmup_count = warmup_count
+        self.warmup_threshold = warmup_threshold
+        
+        # State
+        self.pause_history = []
+        self.current_para_chars = 0
+        self.current_para_words = 0
+        self.last_absolute_end = None  # Track absolute end time across batches
+    
+    def _add_pause(self, duration):
+        """Record a pause duration for statistics."""
+        if duration > 0:  # Only track actual pauses
+            self.pause_history.append(duration)
+            if len(self.pause_history) > self.window_size:
+                self.pause_history.pop(0)
+    
+    def _get_adaptive_threshold(self):
+        """Calculate the current adaptive threshold based on pause history."""
+        if len(self.pause_history) < self.warmup_count:
+            return self.warmup_threshold
+        
+        n = len(self.pause_history)
+        mean = sum(self.pause_history) / n
+        variance = sum((p - mean) ** 2 for p in self.pause_history) / n
+        std = math.sqrt(variance) if variance > 0 else 0
+        
+        # Threshold is mean + (threshold_std * std), but at least min_pause
+        threshold = mean + (self.threshold_std * std)
+        return max(threshold, self.min_pause)
+    
+    def _reset_paragraph(self):
+        """Reset paragraph counters."""
+        self.current_para_chars = 0
+        self.current_para_words = 0
+    
+    def process_segments(self, segments, time_offset=0.0):
+        """
+        Process a list of Whisper segments and return text with paragraph breaks.
+        
+        Args:
+            segments: List of Whisper segment objects with .text, .start, .end
+            time_offset: Cumulative audio offset to convert relative to absolute timestamps
+            
+        Returns:
+            String with paragraph breaks (\n\n) inserted where appropriate
+        """
+        if not segments:
+            return ""
+        
+        result_parts = []
+        
+        for segment in segments:
+            text = segment.text
+            should_break = False
+            
+            # Convert to absolute timestamps
+            absolute_start = segment.start + time_offset
+            absolute_end = segment.end + time_offset
+            
+            # Check hard limits first
+            new_chars = self.current_para_chars + len(text)
+            new_words = self.current_para_words + len(text.split())
+            if self.current_para_chars > 0:
+                if new_chars > self.max_chars or new_words > self.max_words:
+                    should_break = True
+            
+            # Check pause using absolute timestamps (works across batches!)
+            if not should_break and self.last_absolute_end is not None:
+                pause_duration = absolute_start - self.last_absolute_end
+                if pause_duration > 0:
+                    self._add_pause(pause_duration)
+                    if pause_duration >= self.min_pause:
+                        threshold = self._get_adaptive_threshold()
+                        if pause_duration > threshold:
+                            should_break = True
+            
+            # Apply break
+            if should_break:
+                result_parts.append("\n\n")
+                self._reset_paragraph()
+            
+            # Add text and update counters
+            result_parts.append(text)
+            self.current_para_chars += len(text)
+            self.current_para_words += len(text.split())
+            
+            # Track absolute end time for next comparison
+            self.last_absolute_end = absolute_end
+        
+        return "".join(result_parts)
+    
+    def get_stats(self):
+        """Return current statistics for debugging/display."""
+        if len(self.pause_history) < 2:
+            return {
+                "pause_count": len(self.pause_history),
+                "mean": None,
+                "std": None,
+                "threshold": self.warmup_threshold,
+                "mode": "warmup"
+            }
+        
+        n = len(self.pause_history)
+        mean = sum(self.pause_history) / n
+        variance = sum((p - mean) ** 2 for p in self.pause_history) / n
+        std = math.sqrt(variance) if variance > 0 else 0
+        
+        return {
+            "pause_count": n,
+            "mean": round(mean, 3),
+            "std": round(std, 3),
+            "threshold": round(self._get_adaptive_threshold(), 3),
+            "mode": "adaptive" if n >= self.warmup_count else "warmup"
+        }
 sources = ["af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh"]
 targets = ["af", "ak", "am", "ar", "as", "ay", "az", "be", "bg", "bho", "bm", "bn", "bs", "ca", "ceb", "ckb", "co", "cs", "cy", "da", "de", "doi", "dv", "ee", "el", "en", "eo", "es", "et", "eu", "fa", "fi", "fil", "fr", "fy", "ga", "gd", "gl", "gn", "gom", "gu", "ha", "haw", "he", "hi", "hmn", "hr", "ht", "hu", "hy", "id", "ig", "ilo", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "kri", "ku", "ky", "la", "lb", "lg", "ln", "lo", "lt", "lus", "lv", "mai", "mg", "mi", "mk", "ml", "mn", "mni-Mtei", "mr", "ms", "mt", "my", "ne", "nl", "no", "nso", "ny", "om", "or", "pa", "pl", "ps", "pt", "qu", "ro", "ru", "rw", "sa", "sd", "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "st", "su", "sv", "sw", "ta", "te", "tg", "th", "ti", "tk", "tl", "tr", "ts", "tt", "ug", "uk", "ur", "uz", "vi", "xh", "yi", "yo", "zh-CN", "zh-TW", "zu"]
 
@@ -174,10 +326,20 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100):
+    # Create paragraph detector if enabled
+    para_detector = ParagraphDetector(
+        threshold_std=para_threshold_std,
+        min_pause=para_min_pause,
+        max_chars=para_max_chars,
+        max_words=para_max_words
+    ) if para_detect else None
+    
     def ts_proc():
         prompts = collections.deque([prompt], memory)
         window = bytearray()
+        cumulative_offset = 0.0  # Track total trimmed audio in seconds
+        
         while frame := frame_queue.get():
             window.extend(frame)
             audio_file = audio_to_wav_bytes(window, TARGET_SAMPLE_RATE, SAMPLE_WIDTH, channels=1)
@@ -191,9 +353,21 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         start = segment.start
                     break
                 i += 1
-            done_src = "".join(segment.text for segment in segments[:i])
+            
+            # Process done segments with paragraph detection
+            done_segments = segments[:i]
+            if para_detector and done_segments:
+                # Pass cumulative offset so detector can compute absolute timestamps
+                done_src = para_detector.process_segments(done_segments, cumulative_offset)
+            else:
+                done_src = "".join(segment.text for segment in done_segments)
+            
             curr_src = "".join(segment.text for segment in segments[i:])
-            prompts.extend(segment.text for segment in segments[:i])
+            prompts.extend(segment.text for segment in done_segments)
+            
+            # Update cumulative offset BEFORE trimming (start = seconds to trim)
+            cumulative_offset += start
+            
             del window[: int(start * TARGET_SAMPLE_RATE) * SAMPLE_WIDTH]
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))

@@ -68,6 +68,8 @@ class App(tk.Tk):
         self.model_combo.set("large-v3")  # default to large-v3
         self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
+        self.para_check = ttk.Checkbutton(self.top_frame, text="¶", onvalue=True, offvalue=False)  # Pilcrow symbol for paragraph
+        self.para_check.state(("!alternate", "selected"))  # enabled by default
         self.device_label = ttk.Label(self.top_frame, text="Device:")
         self.device_combo = ttk.Combobox(self.top_frame, values=core.devices, state="readonly", width=6)
         self.device_combo.current(1)  # default to CUDA
@@ -86,6 +88,7 @@ class App(tk.Tk):
         self.model_label.pack(side="left", padx=(5, 5))
         self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.vad_check.pack(side="left", padx=(0, 5))
+        self.para_check.pack(side="left", padx=(0, 5))
         self.device_label.pack(side="left", padx=(5, 5))
         self.device_combo.pack(side="left", padx=(0, 5))
         self.memory_label.pack(side="left", padx=(5, 5))
@@ -145,6 +148,7 @@ class App(tk.Tk):
             index = self.mic_list[combo_idx - 1][0]
         model = self.model_combo.get()
         vad = self.vad_check.instate(("selected",))
+        para_detect = self.para_check.instate(("selected",))
         memory = int(self.memory_spin.get())
         patience = float(self.patience_spin.get())
         timeout = float(self.timeout_spin.get())
@@ -153,7 +157,7 @@ class App(tk.Tk):
         target = None if self.target_combo.get() == "none" else self.target_combo.get()
         device = self.device_combo.get()
         self.level[0] = 0
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level), daemon=True).start()
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), daemon=True).start()
         self.starting()
         self.update_level()
 
