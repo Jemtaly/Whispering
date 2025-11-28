@@ -1,33 +1,166 @@
 #!/usr/bin/env python3
 
-
 import collections
 import io
 import threading
+import wave
 from urllib.parse import quote
 
+import numpy as np
 import requests
-import speech_recognition as sr
+import sounddevice as sd
 from cmque import DataDeque, PairDeque, Queue
 from faster_whisper import WhisperModel
 
 
 models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"]
+devices = ["cpu", "cuda", "auto"]
 sources = ["af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw", "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl", "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh"]
 targets = ["af", "ak", "am", "ar", "as", "ay", "az", "be", "bg", "bho", "bm", "bn", "bs", "ca", "ceb", "ckb", "co", "cs", "cy", "da", "de", "doi", "dv", "ee", "el", "en", "eo", "es", "et", "eu", "fa", "fi", "fil", "fr", "fy", "ga", "gd", "gl", "gn", "gom", "gu", "ha", "haw", "he", "hi", "hmn", "hr", "ht", "hu", "hy", "id", "ig", "ilo", "is", "it", "ja", "jw", "ka", "kk", "km", "kn", "ko", "kri", "ku", "ky", "la", "lb", "lg", "ln", "lo", "lt", "lus", "lv", "mai", "mg", "mi", "mk", "ml", "mn", "mni-Mtei", "mr", "ms", "mt", "my", "ne", "nl", "no", "nso", "ny", "om", "or", "pa", "pl", "ps", "pt", "qu", "ro", "ru", "rw", "sa", "sd", "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "st", "su", "sv", "sw", "ta", "te", "tg", "th", "ti", "tk", "tl", "tr", "ts", "tt", "ug", "uk", "ur", "uz", "vi", "xh", "yi", "yo", "zh-CN", "zh-TW", "zu"]
 
+# Audio settings - Whisper expects 16kHz mono
+TARGET_SAMPLE_RATE = 16000
+SAMPLE_WIDTH = 2  # 16-bit audio
+CHUNK_DURATION = 0.1  # seconds per chunk
+
+
+def get_preferred_hostapi_index():
+    """Find the best host API: ALSA only (JACK causes crashes)."""
+    apis = sd.query_hostapis()
+    for i, api in enumerate(apis):
+        if 'alsa' in api['name'].lower():
+            return i, 'alsa'
+    return 0, 'unknown'
+
 
 def get_mic_names():
-    return sr.Microphone.list_microphone_names()
+    """Get list of input device names, preferring stable devices."""
+    devices_list = sd.query_devices()
+    
+    mics = []
+    
+    # First priority: ALSA virtual devices named "pipewire" or "pulse" (these route through PipeWire)
+    for i, d in enumerate(devices_list):
+        if d['max_input_channels'] > 0:
+            name_lower = d['name'].lower()
+            # Only ALSA devices (JACK crashes)
+            api_name = sd.query_hostapis(d['hostapi'])['name'].lower()
+            if 'alsa' not in api_name:
+                continue
+            if 'pipewire' in name_lower or name_lower == 'pulse':
+                mics.append((i, d['name']))
+    
+    # Second priority: Simple ALSA hardware devices (limited channels, not default)
+    for i, d in enumerate(devices_list):
+        if d['max_input_channels'] > 0 and d['max_input_channels'] <= 8:
+            api_name = sd.query_hostapis(d['hostapi'])['name'].lower()
+            if 'alsa' not in api_name:
+                continue
+            name_lower = d['name'].lower()
+            # Skip virtual devices we already added, skip default/jack
+            if 'pipewire' in name_lower or name_lower == 'pulse':
+                continue
+            if name_lower in ('default', 'jack'):
+                continue
+            if 'hw:' in d['name']:  # Real hardware
+                if (i, d['name']) not in mics:
+                    mics.append((i, d['name']))
+    
+    return mics
 
 
-def get_mic_index(mic):
-    if mic is None:
+def get_default_device_index():
+    """Get the best default device (pipewire or pulse, not the actual 'default')."""
+    devices_list = sd.query_devices()
+    # Prefer pipewire, then pulse
+    for i, d in enumerate(devices_list):
+        if d['name'].lower() == 'pipewire' and d['max_input_channels'] > 0:
+            return i
+    for i, d in enumerate(devices_list):
+        if d['name'].lower() == 'pulse' and d['max_input_channels'] > 0:
+            return i
+    # Fallback: find first device with reasonable channel count
+    for i, d in enumerate(devices_list):
+        if d['max_input_channels'] > 0 and d['max_input_channels'] <= 4:
+            api_name = sd.query_hostapis(d['hostapi'])['name'].lower()
+            if 'alsa' in api_name:
+                return i
+    return None
+
+
+def get_mic_index(mic_name):
+    """Get device index by name."""
+    if mic_name is None:
         return None
-    for index, name in enumerate(sr.Microphone.list_microphone_names()):
-        if mic in name:
-            return index
-    raise ValueError("Microphone device not found.")
+    mics = get_mic_names()
+    # Try exact match first
+    for idx, name in mics:
+        if name == mic_name:
+            return idx
+    # Fall back to partial match
+    for idx, name in mics:
+        if mic_name in name:
+            return idx
+    raise ValueError(f"Microphone device not found: {mic_name}")
+
+
+def get_device_info(device_index):
+    """Get device sample rate and channels, with fallbacks."""
+    if device_index is None:
+        # Use smart default (pipewire/pulse)
+        device_index = get_default_device_index()
+    
+    if device_index is None:
+        # Ultimate fallback
+        return 48000, 1
+    
+    device_info = sd.query_devices(device_index)
+    
+    # Get native sample rate (or use default)
+    sample_rate = int(device_info.get('default_samplerate', 48000))
+    
+    # Get channels - limit to 2 to avoid issues with high channel count devices
+    max_channels = int(device_info.get('max_input_channels', 1))
+    channels = min(2, max(1, max_channels))  # Use 1-2 channels max
+    
+    return sample_rate, channels
+
+
+def audio_to_wav_bytes(audio_data, sample_rate, sample_width, channels=1):
+    """Convert raw audio bytes to WAV format in memory."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(sample_rate)
+        wf.writeframes(audio_data)
+    buffer.seek(0)
+    return buffer
+
+
+def resample_to_mono_16k(data, orig_rate, orig_channels):
+    """Convert audio to mono 16kHz for Whisper."""
+    # Ensure we have a copy to avoid memory issues
+    audio = np.array(data, dtype=np.float32, copy=True) / 32768.0
+    
+    # Convert to mono if stereo/multi-channel
+    if orig_channels > 1 and len(audio.shape) > 1:
+        audio = audio.mean(axis=1)
+    else:
+        audio = audio.flatten()
+    
+    # Resample if needed
+    if orig_rate != TARGET_SAMPLE_RATE:
+        # Simple resampling using linear interpolation
+        duration = len(audio) / orig_rate
+        new_length = int(duration * TARGET_SAMPLE_RATE)
+        if new_length > 0:
+            indices = np.linspace(0, len(audio) - 1, new_length)
+            audio = np.interp(indices, np.arange(len(audio)), audio)
+    
+    # Convert back to int16
+    audio = (audio * 32768.0).clip(-32768, 32767).astype(np.int16)
+    return audio.tobytes()
 
 
 def translate(text, source, target, timeout):
@@ -41,17 +174,16 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None):
     def ts_proc():
         prompts = collections.deque([prompt], memory)
         window = bytearray()
         while frame := frame_queue.get():
             window.extend(frame)
-            audio = sr.AudioData(window, mic.SAMPLE_RATE, mic.SAMPLE_WIDTH)
-            with io.BytesIO(audio.get_wav_data()) as audio_file:
-                segments, info = model.transcribe(audio_file, language=source, initial_prompt="".join(prompts), vad_filter=vad)
+            audio_file = audio_to_wav_bytes(window, TARGET_SAMPLE_RATE, SAMPLE_WIDTH, channels=1)
+            segments, info = whisper_model.transcribe(audio_file, language=source, initial_prompt="".join(prompts), vad_filter=vad)
             segments = [segment for segment in segments]
-            start = max(len(window) // mic.SAMPLE_WIDTH / mic.SAMPLE_RATE - patience, 0.0)
+            start = max(len(window) // SAMPLE_WIDTH / TARGET_SAMPLE_RATE - patience, 0.0)
             i = 0
             for segment in segments:
                 if segment.end >= start:
@@ -62,7 +194,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
             done_src = "".join(segment.text for segment in segments[:i])
             curr_src = "".join(segment.text for segment in segments[i:])
             prompts.extend(segment.text for segment in segments[:i])
-            del window[: int(start * mic.SAMPLE_RATE) * mic.SAMPLE_WIDTH]
+            del window[: int(start * TARGET_SAMPLE_RATE) * SAMPLE_WIDTH]
             ts2tl_queue.put((done_src, curr_src))
             tsres_queue.put((done_src, curr_src))
         ts2tl_queue.put(None)
@@ -86,19 +218,55 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         tlres_queue.put(None)
 
     try:
-        with sr.Microphone(index) as mic:
-            model = WhisperModel(model)
-            frame_queue = Queue(DataDeque())
-            ts2tl_queue = Queue(PairDeque())
-            ts_thread = threading.Thread(target=ts_proc)
-            tl_thread = threading.Thread(target=tl_proc)
+        # Load model first (before opening audio stream)
+        whisper_model = WhisperModel(model, device=device)
+        
+        # Use smart default if no device specified
+        if index is None:
+            index = get_default_device_index()
+        
+        # Query device capabilities
+        sample_rate, channels = get_device_info(index)
+        chunk_size = int(sample_rate * CHUNK_DURATION)
+        
+        frame_queue = Queue(DataDeque())
+        ts2tl_queue = Queue(PairDeque())
+        ts_thread = threading.Thread(target=ts_proc)
+        tl_thread = threading.Thread(target=tl_proc)
+        
+        # Open audio stream with sounddevice
+        with sd.InputStream(
+            device=index,
+            samplerate=sample_rate,
+            channels=channels,
+            dtype='int16',
+            blocksize=chunk_size
+        ) as stream:
             ts_thread.start()
             tl_thread.start()
             ready[0] = True
+            
             while ready[0]:
-                frame_queue.put(mic.stream.read(mic.CHUNK))
+                data, overflowed = stream.read(chunk_size)
+                # Make a copy immediately to avoid memory issues
+                data_copy = np.array(data, copy=True)
+                
+                # Calculate audio level (RMS) for the level meter
+                if level is not None:
+                    rms = np.sqrt(np.mean(data_copy.astype(np.float32)**2))
+                    # Scale to 0-100 range (32768 is max for int16)
+                    level[0] = min(100, int(rms / 328 * 100))
+                
+                # Convert to mono 16kHz for Whisper
+                mono_16k = resample_to_mono_16k(data_copy, sample_rate, channels)
+                frame_queue.put(mono_16k)
+            
             frame_queue.put(None)
             ts_thread.join()
             tl_thread.join()
+            
+    except Exception as e:
+        if error is not None:
+            error[0] = str(e)
     finally:
         ready[0] = None

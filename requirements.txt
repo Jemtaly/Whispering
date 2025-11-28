@@ -1,0 +1,6 @@
+setuptools
+requests
+wheel
+faster-whisper
+sounddevice
+numpy

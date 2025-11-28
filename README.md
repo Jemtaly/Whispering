@@ -1,74 +1,229 @@
 # Whispering
 
-Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library and Google translation service. Both GUI and TUI versions are available.
+Real-time speech transcription and translation using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Google Translate. Available in both GUI and TUI versions.
+
+## Features
+
+- **Real-time transcription** with iterative refinement for accuracy
+- **Live translation** to 100+ languages via Google Translate
+- **GPU acceleration** with CUDA support for fast inference
+- **Audio level meter** to verify microphone input
+- **PipeWire/PulseAudio integration** for reliable audio capture
+- **Multiple model sizes** from tiny to large-v3
 
 ## Requirements
 
 - Python 3.8+
-- [fast-whisper](https://github.com/SYSTRAN/faster-whisper)
-- [SpeechRecognition](https://pypi.org/project/SpeechRecognition)
-- [PyAudio](https://pypi.org/project/PyAudio) 0.2.11+
-- If you want to transcript from computer output, you can use virtual audio cable such as [VB-Audio Virtual Cable](https://vb-audio.com/Cable) or [Jack Audio Connection Kit](https://jackaudio.org), or use the `loopback` device in PulseAudio or ALSA.
+- Linux with PipeWire or PulseAudio (recommended)
+- NVIDIA GPU with CUDA 12 (optional, for GPU acceleration)
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Jemtaly/Whispering.git
+cd Whispering
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# For CUDA support, install NVIDIA libraries
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+## Dependencies
+
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - Fast Whisper inference with CTranslate2
+- [sounddevice](https://python-sounddevice.readthedocs.io/) - Cross-platform audio I/O
+- [numpy](https://numpy.org/) - Array processing
+- [requests](https://requests.readthedocs.io/) - HTTP client for translation API
 
 ## Usage
 
-The program is available in both GUI and TUI versions.
+### GUI
 
-- GUI
+Use the launcher script (recommended for CUDA support):
 
-  Simply run the `gui.py` script to start the GUI version of the program.
+```bash
+./run.sh
+```
 
-  ![Screenshot](https://github.com/Jemtaly/Whispering/assets/83796250/c68fcd61-752f-4c16-9c13-231ac4b0d2fc)
+Or run directly:
 
-- TUI
+```bash
+python gui.py
+```
 
-  ```
-  usage: tui.py [-h] [--mic MIC] [--model MODEL] [--vad]
-                [--memory MEMORY] [--patience PATIENCE] [--timeout TIMEOUT]
-                [--prompt PROMPT] [--source SOURCE] [--target TARGET]
-  
-  Transcribe and translate speech in real-time.
-  
-  options:
-    -h, --help            show this help message and exit
-    --mic MIC             microphone device name
-    --model {tiny,base,small,medium,large-v1,large-v2,large-v3,large}
-                          size of the model to use
-    --vad                 enable voice activity detection
-    --memory MEMORY       maximum number of previous segments to be used as prompt for audio
-                          in the transcribing window
-    --patience PATIENCE   minimum time to wait for subsequent speech before move a completed
-                          segment out of the transcribing window
-    --timeout TIMEOUT     timeout for the translation service
-    --prompt PROMPT       initial prompt for the first segment of each paragraph
-    --source {af,am,ar,as,az,ba,be,bg,bn,bo,br,bs,ca,cs,cy,da,de,el,en,es,et,eu,fa,fi,fo,fr,gl,gu,ha,haw,he,hi,hr,ht,hu,hy,id,is,it,ja,jw,ka,kk,km,kn,ko,la,lb,ln,lo,lt,lv,mg,mi,mk,ml,mn,mr,ms,mt,my,ne,nl,nn,no,oc,pa,pl,ps,pt,ro,ru,sa,sd,si,sk,sl,sn,so,sq,sr,su,sv,sw,ta,te,tg,th,tk,tl,tr,tt,uk,ur,uz,vi,yi,yo,yue,zh}
-                          source language for translation, auto-detect if not specified
-    --target {af,ak,am,ar,as,ay,az,be,bg,bho,bm,bn,bs,ca,ceb,ckb,co,cs,cy,da,de,doi,dv,ee,el,en,eo,es,et,eu,fa,fi,fil,fr,fy,ga,gd,gl,gn,gom,gu,ha,haw,he,hi,hmn,hr,ht,hu,hy,id,ig,ilo,is,it,ja,jw,ka,kk,km,kn,ko,kri,ku,ky,la,lb,lg,ln,lo,lt,lus,lv,mai,mg,mi,mk,ml,mn,mni-Mtei,mr,ms,mt,my,ne,nl,no,nso,ny,om,or,pa,pl,ps,pt,qu,ro,ru,rw,sa,sd,si,sk,sl,sm,sn,so,sq,sr,st,su,sv,sw,ta,te,tg,th,ti,tk,tl,tr,ts,tt,ug,uk,ur,uz,vi,xh,yi,yo,zh-CN,zh-TW,zu}
-                          target language for translation, no translation if not specified
-  ```
+**GUI Controls:**
+- **Mic** - Select input device (system default uses PipeWire/PulseAudio)
+- **Model** - Whisper model size (default: large-v3)
+- **VAD** - Voice Activity Detection filter
+- **Device** - Inference device: cpu, cuda, or auto
+- **Memory** - Number of previous segments used as context
+- **Patience** - Seconds to wait before finalizing a segment
+- **Timeout** - Translation service timeout
+- **Source** - Source language (auto-detect if not set)
+- **Target** - Target language (no translation if set to "none")
+- **Level** - Real-time audio input level meter
 
-## Q&A
+### TUI
 
-- How does the program work?
+```bash
+python tui.py [options]
+```
 
-  When the program starts working, it will take the audio stream in real time from the input device (microphone or computer output) and transcribe it. After a piece of audio is transcribed, the corresponding text fragment will be obtained and output to the screen immediately. In order to avoid inaccurate transcription results due to lack of context or speech being cut off in the middle, the program will temporarily place the segments that have been transcribed but have not yet been fully confirmed in a "transcription window" (displayed as underlined blue text in the GUI app). When the next piece of audio comes, it will be concatenated to the window. The audio in the window is transcribed iteratively, and the transcription results are constantly revised and updated until a sentence is completed and has sufficient subsequent context (determined by the `patience` parameter) before it is moved out of the transcription window (turns into black text). The last few moved-out segments (the number is determined by the `memory` parameter) will be used as prompts for subsequent context to improve the accuracy of transcription.
+**Options:**
 
-  At the same time, the real-time transcription text fragments will be sent to the Google translation service for translation, and the translation results will also be output to the screen in real time. Users can specify the source language and target language by setting the `source` and `target` parameters. If the source language is not specified, the program will automatically detect the source language. If the target language is not specified, no translation will be performed.
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--mic` | auto | Microphone device name (partial match) |
+| `--model` | large-v3 | Model: tiny, base, small, medium, large-v1/v2/v3 |
+| `--device` | cuda | Inference device: cpu, cuda, auto |
+| `--vad` | off | Enable voice activity detection |
+| `--memory` | 3 | Previous segments used as prompt |
+| `--patience` | 5.0 | Seconds before finalizing segment |
+| `--timeout` | 5.0 | Translation timeout in seconds |
+| `--prompt` | "" | Initial prompt for first segment |
+| `--source` | auto | Source language code |
+| `--target` | none | Target language code |
 
-- What is the effect of the `patience` and `memory` parameters on the program?
+**Example:**
 
-  The `patience` parameter determines the minimum time to wait for subsequent speech before moving a completed segment out of the transcription window. If the `patience` parameter is set too low, the program may move the segment out of the window too early, resulting in incomplete sentences or inaccurate transcription. If the `patience` parameter is set too high, the program may wait too long to move the segment out of the window, this will cause the transcription window to accumulate too much content, which may result in slower transcription speed.
+```bash
+# Transcribe English, translate to Spanish, using GPU
+python tui.py --source en --target es --device cuda
 
-  The `memory` parameter determines the maximum number of previous segments to be used as prompts for audio in the transcription window. If the `memory` parameter is set too low, the program may not have enough previous context used as prompts, which may result in inaccurate transcription. If the `memory` parameter is set too high, the prompts could be too long, which also could slow down the transcription speed.
+# Use specific microphone
+python tui.py --mic "Webcam"
+```
 
-- What are the advantages of Whispering compared to other speech recognition programs based on Whisper?
+**TUI Controls:**
+- `Space` - Start/Stop transcription
+- `Q` - Quit
 
-  Since the program iteratively transcribes the audio in real time and can automatically divide the sentence at the appropriate position to move it out of the transcription window, Whispering can ensure the accuracy of recognition while minimizing the delay caused by the accumulation of audio. In addition, Whispering also supports real-time translation, allowing users to obtain translation results while transcribing, which is very useful in scenarios that require multilingual support.
+## Audio Device Selection
 
-- Does it need to be connected to the Internet?
+The application intelligently selects audio devices:
 
-  If you only need the real-time transcription function, then it does not need to be connected to the Internet. In this case, you only need to set the target language for translation to `none`. However, if you need the translation function, then an Internet connection is necessary. Because in the current implementation, the translation function is implemented by calling Google's translation service.
+1. **System Default** - Uses the `pipewire` or `pulse` virtual device, which routes through your system's default microphone setting
+2. **Named Devices** - Direct hardware access to specific microphones
 
-- About scalability
+**Supported Devices:**
+- PipeWire virtual devices (recommended)
+- PulseAudio virtual devices
+- ALSA hardware devices with ≤8 channels
 
-  The core logic of the program is in `core.py`, where the logic of transcription and translation is clearly separated, so you can extend or modify it as needed. For example, you can replace the translation service with other translation services.
+**Note:** JACK devices are excluded due to stability issues with PortAudio.
+
+### Troubleshooting Audio
+
+Run the debug script to check available devices:
+
+```bash
+python debug_audio.py
+```
+
+This will show:
+- Available host APIs
+- Recommended input devices
+- Smart default device selection
+- Quick recording test with level meter
+
+## How It Works
+
+### Transcription Pipeline
+
+1. Audio is captured in real-time from the selected input device
+2. Audio chunks are accumulated in a "transcription window"
+3. The window is iteratively transcribed using Whisper
+4. Text shown in **blue underline** is provisional (still in the window)
+5. Text shown in **black** is finalized (moved out of window)
+6. Recent finalized segments serve as context for subsequent transcription
+
+### Translation
+
+- Transcribed text is sent to Google Translate in real-time
+- Source language can be auto-detected or specified
+- Translation is skipped if target language is set to "none"
+
+### Parameters Explained
+
+**Patience:** Controls how long to wait for more speech before finalizing a segment.
+- Too low: Sentences may be cut off mid-thought
+- Too high: Transcription window grows large, slowing inference
+
+**Memory:** Number of previous segments used as context prompt.
+- Too low: Less context, potentially less accurate
+- Too high: Long prompts slow down inference
+
+## CUDA Setup
+
+For GPU acceleration with CUDA 12:
+
+```bash
+# Install CUDA libraries in virtualenv
+pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+
+# The run.sh script automatically sets LD_LIBRARY_PATH
+./run.sh
+```
+
+If you have CUDA 13 installed system-wide, the pip packages provide CUDA 12 libraries that faster-whisper requires.
+
+## File Structure
+
+```
+Whispering/
+├── gui.py           # GUI application (Tkinter)
+├── tui.py           # TUI application (curses)
+├── core.py          # Core transcription/translation logic
+├── cmque.py         # Thread-safe queue utilities
+├── run.sh           # Launcher script (sets CUDA paths)
+├── debug_audio.py   # Audio device diagnostics
+└── requirements.txt # Python dependencies
+```
+
+## Extending
+
+The core logic in `core.py` separates transcription and translation cleanly:
+
+- **Transcription:** Uses faster-whisper with configurable model and device
+- **Translation:** Uses Google Translate API (can be replaced with other services)
+- **Audio capture:** Uses sounddevice with automatic resampling to 16kHz mono
+
+To use a different translation service, modify the `translate()` function in `core.py`.
+
+## Troubleshooting
+
+**"Library libcublas.so.12 is not found"**
+- Install CUDA 12 libraries: `pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`
+- Use the `run.sh` launcher script
+
+**Audio device crashes or hangs**
+- Use the `pipewire` or `pulse` virtual device instead of direct hardware
+- Run `debug_audio.py` to identify stable devices
+- Avoid JACK devices (known stability issues)
+
+**No audio level shown**
+- Check that the correct microphone is selected
+- Verify microphone isn't muted in system settings
+- Run `debug_audio.py` to test recording
+
+**Slow transcription**
+- Use a smaller model (base, small) instead of large-v3
+- Enable CUDA if you have an NVIDIA GPU
+- Reduce the `memory` parameter
+
+## License
+
+MIT License
+
+## Acknowledgments
+
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) - Fast Whisper implementation
+- [OpenAI Whisper](https://github.com/openai/whisper) - Original speech recognition model
+- [Google Translate](https://translate.google.com/) - Translation service

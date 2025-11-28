@@ -58,13 +58,19 @@ class App(tk.Tk):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
         self.mic_label = ttk.Label(self.top_frame, text="Mic:")
-        self.mic_combo = ttk.Combobox(self.top_frame, values=["default"], state="readonly")
+        self.mic_list = core.get_mic_names()  # List of (index, name) tuples
+        mic_display = ["(system default)"] + [name for idx, name in self.mic_list]
+        self.mic_combo = ttk.Combobox(self.top_frame, values=mic_display, state="readonly", width=40)
         self.mic_combo.current(0)
-        self.mic_button = ttk.Button(self.top_frame, text="Refresh", command=lambda: self.mic_combo.config(values=["default"] + core.get_mic_names()))
+        self.mic_button = ttk.Button(self.top_frame, text="↻", width=2, command=self.refresh_mics)
         self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
         self.model_combo = ttk.Combobox(self.top_frame, values=core.models, state="normal")
+        self.model_combo.set("large-v3")  # default to large-v3
         self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
+        self.device_label = ttk.Label(self.top_frame, text="Device:")
+        self.device_combo = ttk.Combobox(self.top_frame, values=core.devices, state="readonly", width=6)
+        self.device_combo.current(1)  # default to CUDA
         self.memory_label = ttk.Label(self.top_frame, text="Memory:")
         self.memory_spin = ttk.Spinbox(self.top_frame, from_=1, to=10, increment=1, state="readonly")
         self.memory_spin.set(3)
@@ -80,6 +86,8 @@ class App(tk.Tk):
         self.model_label.pack(side="left", padx=(5, 5))
         self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.vad_check.pack(side="left", padx=(0, 5))
+        self.device_label.pack(side="left", padx=(5, 5))
+        self.device_combo.pack(side="left", padx=(0, 5))
         self.memory_label.pack(side="left", padx=(5, 5))
         self.memory_spin.pack(side="left", padx=(0, 5))
         self.patience_label.pack(side="left", padx=(5, 5))
@@ -102,12 +110,39 @@ class App(tk.Tk):
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
+        self.level_label = ttk.Label(self.bot_frame, text="Level:")
+        self.level_label.pack(side="left", padx=(5, 0))
+        self.level_bar = ttk.Progressbar(self.bot_frame, length=100, mode='determinate', maximum=100)
+        self.level_bar.pack(side="left", padx=(2, 5))
+        self.status_label = ttk.Label(self.bot_frame, text="", foreground="red")
+        self.status_label.pack(side="left", padx=(5, 5), fill="x", expand=True)
         self.ready = [None]
+        self.error = [None]
+        self.level = [0]  # Audio level indicator
+
+    def refresh_mics(self):
+        current = self.mic_combo.get()
+        self.mic_list = core.get_mic_names()
+        mic_display = ["(system default)"] + [name for idx, name in self.mic_list]
+        self.mic_combo.config(values=mic_display)
+        # Try to keep current selection
+        if current in mic_display:
+            self.mic_combo.set(current)
+        else:
+            self.mic_combo.current(0)
 
     def start(self):
         self.ready[0] = False
+        self.error[0] = None
+        self.status_label.config(text="")
         self.control_button.config(text="Starting...", command=None, state="disabled")
-        index = None if self.mic_combo.current() == 0 else self.mic_combo.current() - 1
+        # Get mic index: use smart default or stored index
+        combo_idx = self.mic_combo.current()
+        if combo_idx == 0:
+            index = core.get_default_device_index()  # Smart default (pipewire/pulse)
+        else:
+            # mic_list is [(device_index, name), ...], combo index 1 = mic_list[0]
+            index = self.mic_list[combo_idx - 1][0]
         model = self.model_combo.get()
         vad = self.vad_check.instate(("selected",))
         memory = int(self.memory_spin.get())
@@ -116,14 +151,19 @@ class App(tk.Tk):
         prompt = self.prompt_entry.get()
         source = None if self.source_combo.get() == "auto" else self.source_combo.get()
         target = None if self.target_combo.get() == "none" else self.target_combo.get()
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready), daemon=True).start()
+        device = self.device_combo.get()
+        self.level[0] = 0
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level), daemon=True).start()
         self.starting()
+        self.update_level()
 
     def starting(self):
         if self.ready[0] is True:
             self.control_button.config(text="Stop", command=self.stop, state="normal")
             return
         if self.ready[0] is None:
+            if self.error[0]:
+                self.status_label.config(text=f"Error: {self.error[0]}")
             self.control_button.config(text="Start", command=self.start, state="normal")
             return
         self.after(100, self.starting)
@@ -136,8 +176,17 @@ class App(tk.Tk):
     def stopping(self):
         if self.ready[0] is None:
             self.control_button.config(text="Start", command=self.start, state="normal")
+            self.level_bar['value'] = 0
             return
         self.after(100, self.stopping)
+
+    def update_level(self):
+        if self.ready[0] is None:
+            self.level_bar['value'] = 0
+            return
+        # Update level bar with current audio level
+        self.level_bar['value'] = min(100, self.level[0])
+        self.after(50, self.update_level)
 
 
 if __name__ == "__main__":

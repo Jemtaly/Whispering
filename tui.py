@@ -69,7 +69,7 @@ class Pad:
         self.refresh()
 
 
-def show(mic, model, vad, memory, patience, timeout, prompt, source, target):
+def show(mic, model, vad, memory, patience, timeout, prompt, source, target, device):
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -96,10 +96,15 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target):
     ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2)
     tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2)
     ready = [None]
+    error = [None]
+    level = [0]  # Audio level (not displayed in TUI for now)
     instr = " <Space> Start/Stop <Q> Quit"
     state = "Stopped"
     while True:
-        stdscr.addstr(0, l, state + " " * (r - l + 1 - len(state) - len(instr)) + instr)
+        status = state
+        if error[0] and state == "Stopped":
+            status = f"Error: {error[0][:40]}"
+        stdscr.addstr(0, l, status + " " * (r - l + 1 - len(status) - len(instr)) + instr)
         stdscr.refresh()
         ts_win.update()
         tl_win.update()
@@ -109,7 +114,10 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target):
         elif state.startswith("Stopped"):
             if key == ord(" "):
                 ready[0] = False
-                threading.Thread(target=core.proc, args=(core.get_mic_index(mic), model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready), daemon=True).start()
+                error[0] = None
+                # Get mic index: smart default if not specified
+                mic_index = core.get_mic_index(mic) if mic else core.get_default_device_index()
+                threading.Thread(target=core.proc, args=(mic_index, model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready, device, error, level), daemon=True).start()
                 state = "Starting..."
         elif state.startswith("Started"):
             if key == ord(" "):
@@ -129,16 +137,17 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target):
 def main():
     parser = argparse.ArgumentParser(description="Transcribe and translate speech in real-time.")
     parser.add_argument("--mic", type=str, default=None, help="microphone device name")
-    parser.add_argument("--model", type=str, choices=core.models, default="base", help="size of the model to use")
+    parser.add_argument("--model", type=str, choices=core.models, default="large-v3", help="size of the model to use")
     parser.add_argument("--vad", action="store_true", help="enable voice activity detection")
-    parser.add_argument("--memory", type=int, default=1, help="maximum number of previous segments to be used as prompt for audio in the transcribing window")
+    parser.add_argument("--memory", type=int, default=3, help="maximum number of previous segments to be used as prompt for audio in the transcribing window")
     parser.add_argument("--patience", type=float, default=5.0, help="minimum time to wait for subsequent speech before move a completed segment out of the transcribing window")
     parser.add_argument("--timeout", type=float, default=5.0, help="timeout for the translation service")
     parser.add_argument("--prompt", type=str, default="", help="initial prompt for the first segment of each paragraph")
     parser.add_argument("--source", type=str, default=None, choices=core.sources, help="source language for translation, auto-detect if not specified")
     parser.add_argument("--target", type=str, default=None, choices=core.targets, help="target language for translation, no translation if not specified")
+    parser.add_argument("--device", type=str, default="cuda", choices=core.devices, help="device to use for inference (cpu, cuda, or auto)")
     args = parser.parse_args()
-    show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target)
+    show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target, args.device)
 
 
 if __name__ == "__main__":
