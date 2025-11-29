@@ -135,10 +135,11 @@ class TTSProvider:
 
         try:
             # Generate audio
+            # Note: ChatterboxTTS uses 'audio_prompt' parameter, not 'reference_audio'
             if self.model_type == "multilingual":
                 audio = self.model.generate(
                     text=text,
-                    reference_audio=reference_audio_path,
+                    audio_prompt=reference_audio_path,
                     language=language,
                     exaggeration=exaggeration,
                     cfg=cfg
@@ -146,7 +147,7 @@ class TTSProvider:
             else:
                 audio = self.model.generate(
                     text=text,
-                    reference_audio=reference_audio_path,
+                    audio_prompt=reference_audio_path,
                     exaggeration=exaggeration,
                     cfg=cfg
                 )
