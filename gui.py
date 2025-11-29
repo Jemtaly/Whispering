@@ -68,6 +68,17 @@ class App(tk.Tk):
         super().__init__()
         self.title("Whispering")
         self.autotype_enabled = False  # Track autotype state
+
+        # Try to load AI configuration
+        self.ai_config = None
+        self.ai_available = False
+        try:
+            from ai_config import load_ai_config
+            self.ai_config = load_ai_config()
+            self.ai_available = self.ai_config is not None
+        except Exception as e:
+            print(f"AI features not available: {e}")
+
         self.ts_text = Text(self, on_new_text=self.on_new_transcription)
         self.tl_text = Text(self)
         self.top_frame = ttk.Frame(self)
@@ -130,11 +141,50 @@ class App(tk.Tk):
         self.target_combo.current(0)
         self.prompt_label = ttk.Label(self.bot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.bot_frame, state="normal")
+
+        # AI Controls
+        self.ai_check = ttk.Checkbutton(self.bot_frame, text="AI", onvalue=True, offvalue=False)
+        if self.ai_available:
+            self.ai_check.state(("!alternate",))  # disabled by default, but available
+        else:
+            self.ai_check.state(("disabled",))
+
+        self.ai_mode_label = ttk.Label(self.bot_frame, text="Mode:")
+        self.ai_mode_combo = ttk.Combobox(self.bot_frame, values=["Translate", "Proofread+Translate"], state="readonly", width=18)
+        self.ai_mode_combo.current(1)  # Default to Proofread+Translate
+        if not self.ai_available:
+            self.ai_mode_combo.state(("disabled",))
+
+        self.ai_model_label = ttk.Label(self.bot_frame, text="Model:")
+        if self.ai_available:
+            model_names = [m['name'] for m in self.ai_config.get_models()]
+            default_model_id = self.ai_config.get_default_model()
+            default_idx = 0
+            for i, m in enumerate(self.ai_config.get_models()):
+                if m['id'] == default_model_id:
+                    default_idx = i
+                    break
+        else:
+            model_names = []
+            default_idx = 0
+
+        self.ai_model_combo = ttk.Combobox(self.bot_frame, values=model_names, state="readonly", width=20)
+        if model_names:
+            self.ai_model_combo.current(default_idx)
+        if not self.ai_available:
+            self.ai_model_combo.state(("disabled",))
+
         self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
+
         self.source_label.pack(side="left", padx=(5, 5))
         self.source_combo.pack(side="left", padx=(0, 5))
         self.target_label.pack(side="left", padx=(5, 5))
         self.target_combo.pack(side="left", padx=(0, 5))
+        self.ai_check.pack(side="left", padx=(5, 5))
+        self.ai_mode_label.pack(side="left", padx=(0, 2))
+        self.ai_mode_combo.pack(side="left", padx=(0, 5))
+        self.ai_model_label.pack(side="left", padx=(5, 2))
+        self.ai_model_combo.pack(side="left", padx=(0, 5))
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
@@ -204,7 +254,38 @@ class App(tk.Tk):
         target = None if self.target_combo.get() == "none" else self.target_combo.get()
         device = self.device_combo.get()
         self.level[0] = 0
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), daemon=True).start()
+
+        # Create AI processor if enabled
+        ai_processor = None
+        if self.ai_available and self.ai_check.instate(("selected",)):
+            try:
+                from ai_provider import AITextProcessor
+
+                # Get selected model
+                model_idx = self.ai_model_combo.current()
+                models = self.ai_config.get_models()
+                selected_model_id = models[model_idx]['id']
+
+                # Get selected mode
+                mode_idx = self.ai_mode_combo.current()
+                mode = "translate" if mode_idx == 0 else "proofread_translate"
+
+                # Create AI processor
+                ai_processor = AITextProcessor(
+                    config=self.ai_config,
+                    model_id=selected_model_id,
+                    mode=mode,
+                    source_lang=source,
+                    target_lang=target
+                )
+
+                self.status_label.config(text=f"AI: {models[model_idx]['name']}", foreground="green")
+            except Exception as e:
+                self.status_label.config(text=f"AI Error: {str(e)[:50]}", foreground="red")
+                print(f"Failed to initialize AI processor: {e}")
+                ai_processor = None
+
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor}, daemon=True).start()
         self.starting()
         self.update_level()
 

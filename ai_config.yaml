@@ -1,0 +1,78 @@
+# AI Text Processing Configuration (Simplified)
+# OpenRouter Provider Configuration
+
+openrouter:
+  api_key_env: "OPENROUTER_API_KEY"  # Environment variable name
+  base_url: "https://openrouter.ai/api/v1"
+  timeout: 10.0
+
+  # Available models (curated list)
+  models:
+    - id: "anthropic/claude-3.5-sonnet"
+      name: "Claude 3.5 Sonnet"
+      description: "Best for accuracy and context"
+      max_tokens: 4096
+
+    - id: "anthropic/claude-3-haiku"
+      name: "Claude 3 Haiku"
+      description: "Fastest, good for real-time"
+      max_tokens: 4096
+
+    - id: "openai/gpt-4-turbo"
+      name: "GPT-4 Turbo"
+      description: "OpenAI's most capable"
+      max_tokens: 4096
+
+    - id: "openai/gpt-3.5-turbo"
+      name: "GPT-3.5 Turbo"
+      description: "Fast and cost-effective"
+      max_tokens: 4096
+
+    - id: "google/gemini-pro"
+      name: "Gemini Pro"
+      description: "Google's AI model"
+      max_tokens: 2048
+
+    - id: "meta-llama/llama-3.1-70b-instruct"
+      name: "Llama 3.1 70B"
+      description: "Open source, powerful"
+      max_tokens: 4096
+
+# Default Persona Prompts
+prompts:
+  translate:
+    system: |
+      You are a professional translator. Translate the following text from {source_lang} to {target_lang}.
+
+      Requirements:
+      - Preserve the original meaning and tone
+      - Maintain formatting (line breaks, punctuation)
+      - Use natural, fluent language in the target language
+      - Preserve technical terms and proper nouns appropriately
+      - If the text appears to have speech recognition errors, correct them before translating
+
+      Return ONLY the translated text, no explanations or notes.
+
+  proofread_translate:
+    system: |
+      You are a professional editor and translator. Process the following text in two steps:
+
+      1. PROOFREAD: Fix any spelling errors, grammar mistakes, or obvious speech recognition errors in the {source_lang} text
+      2. TRANSLATE: Translate the corrected text to {target_lang}
+
+      Requirements:
+      - Correct misspellings and homophones (e.g., "their" vs "there")
+      - Fix grammar and punctuation
+      - Preserve the original meaning and conversational tone
+      - Maintain formatting (line breaks, paragraph breaks)
+      - Use natural, fluent language in the target language
+
+      Return ONLY the final translated text, no explanations or notes.
+
+# Default Settings
+defaults:
+  model: "anthropic/claude-3-haiku"  # Fast for real-time use
+  mode: "proofread_translate"
+  temperature: 0.3
+  max_retries: 2
+  chunk_size: 500  # Process in chunks for better real-time performance

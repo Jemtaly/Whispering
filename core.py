@@ -326,7 +326,28 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100):
+def ai_translate(text, ai_processor):
+    """
+    Translate/process text using AI provider.
+
+    Args:
+        text: Text to process
+        ai_processor: AITextProcessor instance
+
+    Returns:
+        (processed_text, error_message) tuple
+    """
+    if not text or not text.strip():
+        return ("", None)
+
+    try:
+        result, error = ai_processor.process(text)
+        return (result, error)
+    except Exception as e:
+        return (text, f"AI processing error: {str(e)}")
+
+
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -378,17 +399,50 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         rsrv_src = ""
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
-            if done_src or rsrv_src:
-                done_src = rsrv_src + done_src
-                done_snt = translate(done_src, source, target, timeout)
-                rsrv_src = done_snt.pop()[0]
-                done_tgt = "".join(t for s, t in done_snt)
+
+            # Use AI processing if available
+            if ai_processor:
+                # Process done text
+                if done_src or rsrv_src:
+                    done_src = rsrv_src + done_src
+                    # Split into sentences to reserve last incomplete one
+                    sentences = done_src.split('. ')
+                    if len(sentences) > 1:
+                        to_process = '. '.join(sentences[:-1]) + '.'
+                        rsrv_src = sentences[-1]
+                    else:
+                        to_process = done_src
+                        rsrv_src = ""
+
+                    # Process with AI
+                    done_tgt, ai_error = ai_translate(to_process, ai_processor)
+                    if ai_error:
+                        # Log error to console but continue with result
+                        print(f"AI Error: {ai_error}", flush=True)
+                else:
+                    done_tgt = ""
+
+                # Process current (provisional) text
+                curr_to_process = rsrv_src + curr_src if rsrv_src else curr_src
+                if curr_to_process:
+                    curr_tgt, _ = ai_translate(curr_to_process, ai_processor)
+                else:
+                    curr_tgt = ""
+
+                tlres_queue.put((done_tgt, curr_tgt))
             else:
-                done_tgt = ""
-            curr_src = rsrv_src + curr_src
-            curr_snt = translate(curr_src, source, target, timeout)
-            curr_tgt = "".join(t for s, t in curr_snt)
-            tlres_queue.put((done_tgt, curr_tgt))
+                # Use original Google Translate
+                if done_src or rsrv_src:
+                    done_src = rsrv_src + done_src
+                    done_snt = translate(done_src, source, target, timeout)
+                    rsrv_src = done_snt.pop()[0]
+                    done_tgt = "".join(t for s, t in done_snt)
+                else:
+                    done_tgt = ""
+                curr_src = rsrv_src + curr_src
+                curr_snt = translate(curr_src, source, target, timeout)
+                curr_tgt = "".join(t for s, t in curr_snt)
+                tlres_queue.put((done_tgt, curr_tgt))
         tlres_queue.put(None)
 
     try:
