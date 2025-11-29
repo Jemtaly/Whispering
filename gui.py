@@ -10,6 +10,47 @@ from cmque import PairDeque, Queue
 from settings import Settings
 
 
+class ToolTip:
+    """Simple tooltip helper."""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind("<Enter>", self.show)
+        self.widget.bind("<Leave>", self.hide)
+
+    def show(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+
+        label = tk.Label(self.tooltip, text=self.text, background="#ffffe0",
+                        relief="solid", borderwidth=1, font=("TkDefaultFont", 9))
+        label.pack()
+
+    def hide(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+
+# Model VRAM estimates (based on faster-whisper benchmarks)
+MODEL_VRAM = {
+    "tiny": "~1 GB VRAM",
+    "base": "~1.5 GB VRAM",
+    "small": "~2 GB VRAM",
+    "medium": "~3 GB VRAM",
+    "large-v1": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
+    "large-v2": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
+    "large-v3": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
+    "large": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
+}
+
+
 class Text(tk.Text):
     def __init__(self, master, on_new_text=None):
         super().__init__(master)
@@ -89,13 +130,30 @@ class App(tk.Tk):
 
         # Create frames - two column layout
         self.controls_frame = ttk.Frame(self, padding="5")
-        self.ts_text = Text(self, on_new_text=self.on_new_transcription)
-        self.tl_text = Text(self)
 
-        # Grid layout: controls in column 0, text panes in column 1
+        # Text frame with labels
+        self.text_frame = ttk.Frame(self)
+
+        # Whisper output (top)
+        ts_label = ttk.Label(self.text_frame, text="Whisper Output", font=('TkDefaultFont', 9, 'bold'))
+        ts_label.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 2))
+        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription)
+        self.ts_text.grid(row=1, column=0, sticky="nsew")
+
+        # Translated/Proofread output (bottom)
+        tl_label = ttk.Label(self.text_frame, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        tl_label.grid(row=2, column=0, sticky="w", padx=5, pady=(5, 2))
+        self.tl_text = Text(self.text_frame)
+        self.tl_text.grid(row=3, column=0, sticky="nsew")
+
+        # Configure text_frame grid
+        self.text_frame.columnconfigure(0, weight=1)
+        self.text_frame.rowconfigure(1, weight=1)
+        self.text_frame.rowconfigure(3, weight=1)
+
+        # Grid layout: controls in column 0, text frame in column 1
         self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        self.ts_text.grid(row=0, column=1, sticky="nsew")
-        self.tl_text.grid(row=1, column=1, sticky="nsew")
+        self.text_frame.grid(row=0, column=1, sticky="nsew")
 
         # Configure grid weights
         self.columnconfigure(0, weight=0, minsize=350)  # Controls column - fixed width
@@ -119,96 +177,128 @@ class App(tk.Tk):
         self.mic_combo.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.mic_button = ttk.Button(mic_frame, text="↻", width=2, command=self.refresh_mics)
         self.mic_button.pack(side="left")
+        ToolTip(self.mic_button, "Refresh microphone list")
 
         # === TOGGLE BUTTON ===
         self.hide_text_button = ttk.Button(self.controls_frame, text="Hide Text ◀", command=self.toggle_text_display)
-        self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
+        ToolTip(self.hide_text_button, "Hide/show text display panels")
 
         # === MODEL SECTION ===
+        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
         model_frame = ttk.Frame(self.controls_frame)
-        model_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        model_frame.grid(row=row, column=0, sticky="ew", pady=(0, 3))
         row += 1
 
         ttk.Label(model_frame, text="Model:").pack(side="left", padx=(0, 5))
         self.model_combo = ttk.Combobox(model_frame, values=core.models, state="normal", width=15)
         self.model_combo.set("large-v3")
         self.model_combo.pack(side="left", fill="x", expand=True)
+        self.model_combo.bind("<<ComboboxSelected>>", self.on_model_changed)
+        ToolTip(self.model_combo, "Whisper model size (larger = more accurate)")
 
-        # === CHECKBOXES ===
-        checks_frame = ttk.Frame(self.controls_frame)
-        checks_frame.grid(row=row, column=0, sticky="w", pady=(0, 5))
+        # VRAM info label
+        self.vram_label = ttk.Label(self.controls_frame, text=MODEL_VRAM.get("large-v3", ""),
+                                     foreground="gray", font=('TkDefaultFont', 8))
+        self.vram_label.grid(row=row, column=0, sticky="w", pady=(0, 5))
         row += 1
 
-        self.vad_check = ttk.Checkbutton(checks_frame, text="VAD", onvalue=True, offvalue=False)
+        # VAD, ¶, ⌨, Device grouped
+        options_frame = ttk.Frame(self.controls_frame)
+        options_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.vad_check = ttk.Checkbutton(options_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
-        self.vad_check.pack(side="left", padx=(0, 10))
+        self.vad_check.pack(side="left", padx=(0, 8))
+        ToolTip(self.vad_check, "Voice Activity Detection filter")
 
-        self.para_check = ttk.Checkbutton(checks_frame, text="¶", onvalue=True, offvalue=False)
+        self.para_check = ttk.Checkbutton(options_frame, text="¶", onvalue=True, offvalue=False)
         self.para_check.state(("!alternate", "selected"))
-        self.para_check.pack(side="left", padx=(0, 10))
+        self.para_check.pack(side="left", padx=(0, 8))
+        ToolTip(self.para_check, "Adaptive paragraph detection")
 
-        self.type_check = ttk.Checkbutton(checks_frame, text="⌨", onvalue=True, offvalue=False)
+        self.type_check = ttk.Checkbutton(options_frame, text="⌨", onvalue=True, offvalue=False)
         self.type_check.state(("!alternate",))
-        self.type_check.pack(side="left")
+        self.type_check.pack(side="left", padx=(0, 8))
+        ToolTip(self.type_check, "Auto-type to focused window")
 
-        # === DEVICE ===
-        device_frame = ttk.Frame(self.controls_frame)
-        device_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
-        row += 1
-
-        ttk.Label(device_frame, text="Device:").pack(side="left", padx=(0, 5))
-        self.device_combo = ttk.Combobox(device_frame, values=core.devices, state="readonly", width=6)
+        ttk.Label(options_frame, text="Dev:").pack(side="left", padx=(0, 2))
+        self.device_combo = ttk.Combobox(options_frame, values=core.devices, state="readonly", width=6)
         self.device_combo.current(1)
         self.device_combo.pack(side="left")
+        ToolTip(self.device_combo, "Inference device (CUDA/CPU)")
 
         # === MEMORY, PATIENCE, TIMEOUT ===
         params_frame = ttk.Frame(self.controls_frame)
-        params_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        params_frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
         ttk.Label(params_frame, text="Mem:").pack(side="left", padx=(0, 2))
         self.memory_spin = ttk.Spinbox(params_frame, from_=1, to=10, increment=1, state="readonly", width=4)
         self.memory_spin.set(3)
-        self.memory_spin.pack(side="left", padx=(0, 10))
+        self.memory_spin.pack(side="left", padx=(0, 8))
+        ToolTip(self.memory_spin, "Previous segments as context")
 
         ttk.Label(params_frame, text="Pat:").pack(side="left", padx=(0, 2))
         self.patience_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.patience_spin.set(5.0)
-        self.patience_spin.pack(side="left", padx=(0, 10))
+        self.patience_spin.pack(side="left", padx=(0, 8))
+        ToolTip(self.patience_spin, "Seconds before finalizing segment")
 
-        ttk.Label(params_frame, text="Timeout:").pack(side="left", padx=(0, 2))
+        ttk.Label(params_frame, text="Time:").pack(side="left", padx=(0, 2))
         self.timeout_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.timeout_spin.set(5.0)
         self.timeout_spin.pack(side="left")
+        ToolTip(self.timeout_spin, "Translation timeout (seconds)")
 
-        # === SOURCE & TARGET ===
+        # === TRANSLATE/PROOFREAD SECTION ===
+        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(self.controls_frame, text="Translate/Proofread", font=('TkDefaultFont', 9, 'bold')).grid(
+            row=row, column=0, sticky="w", pady=(0, 3))
+        row += 1
+
         lang_frame = ttk.Frame(self.controls_frame)
-        lang_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        lang_frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
         ttk.Label(lang_frame, text="Src:").pack(side="left", padx=(0, 2))
         self.source_combo = ttk.Combobox(lang_frame, values=["auto"] + core.sources, state="readonly", width=5)
         self.source_combo.current(0)
         self.source_combo.pack(side="left", padx=(0, 10))
+        ToolTip(self.source_combo, "Source language (auto-detect)")
 
         ttk.Label(lang_frame, text="Tgt:").pack(side="left", padx=(0, 2))
         self.target_combo = ttk.Combobox(lang_frame, values=["none"] + core.targets, state="readonly", width=5)
         self.target_combo.current(0)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
         self.target_combo.pack(side="left")
+        ToolTip(self.target_combo, "Target language for translation")
 
-        # === AI CONTROLS ===
-        ai_frame = ttk.Frame(self.controls_frame)
-        ai_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        # === AI SECTION ===
+        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        self.ai_check = ttk.Checkbutton(ai_frame, text="AI", onvalue=True, offvalue=False)
+        ttk.Label(self.controls_frame, text="AI Processing", font=('TkDefaultFont', 9, 'bold')).grid(
+            row=row, column=0, sticky="w", pady=(0, 3))
+        row += 1
+
+        ai_enable_frame = ttk.Frame(self.controls_frame)
+        ai_enable_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.ai_check = ttk.Checkbutton(ai_enable_frame, text="Enable AI", onvalue=True, offvalue=False)
         if self.ai_available:
             self.ai_check.state(("!alternate",))
         else:
             self.ai_check.state(("disabled",))
         self.ai_check.pack(side="left", padx=(0, 5))
+        ToolTip(self.ai_check, "Enable AI-powered proofreading/translation")
 
         # AI Mode
         ai_mode_frame = ttk.Frame(self.controls_frame)
@@ -329,6 +419,12 @@ class App(tk.Tk):
                     self.autotype_error_shown = True
                     self.status_label.config(text="autotype.py not found")
 
+    def on_model_changed(self, event=None):
+        """Update VRAM label when model changes."""
+        model = self.model_combo.get()
+        vram_info = MODEL_VRAM.get(model, "")
+        self.vram_label.config(text=vram_info)
+
     def on_target_changed(self, event=None):
         """Update AI mode options based on target language selection."""
         target = self.target_combo.get()
@@ -365,17 +461,15 @@ class App(tk.Tk):
     def toggle_text_display(self):
         """Toggle visibility of text panes."""
         if self.text_visible:
-            # MINIMAL MODE: Hide text panes
-            self.ts_text.grid_remove()
-            self.tl_text.grid_remove()
+            # MINIMAL MODE: Hide text frame
+            self.text_frame.grid_remove()
             self.hide_text_button.config(text="Show Text ▶")
             self.text_visible = False
             # Adjust minimum size for minimal mode (narrow column)
             self.minsize(380, 600)
         else:
-            # FULL MODE: Show text panes
-            self.ts_text.grid()
-            self.tl_text.grid()
+            # FULL MODE: Show text frame
+            self.text_frame.grid()
             self.hide_text_button.config(text="Hide Text ◀")
             self.text_visible = True
             # Restore minimum size for full mode (two columns)
