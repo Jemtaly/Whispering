@@ -14,112 +14,119 @@ from settings import Settings
 class HelpDialog:
     """Help dialog with detailed information."""
 
-    # Help text for each section
+    # Track open dialogs for toggle behavior
+    _open_dialogs = {}
+
+    # Compact help text for each section
     HELP_TEXT = {
-        "model": """Model Settings
+        "model": """Model: Whisper model size (tiny→large-v3, larger=more accurate)
 
-• Model: Whisper model size
-  - Larger models are more accurate but slower
-  - Recommended: large-v3 for best accuracy
-  - Use base/small for faster processing on CPU
+VAD: Voice Activity Detection (filters silence/noise)
 
-• VAD: Voice Activity Detection
-  - Filters out silence and background noise
-  - Reduces unnecessary processing
+¶: Adaptive paragraph detection (auto line breaks by pauses)
 
-• ¶ (Paragraph): Adaptive paragraph detection
-  - Automatically inserts line breaks based on pauses
-  - Uses statistical analysis of speech patterns
+⌨: Auto-type to focused window (dictation mode)
 
-• ⌨ (Auto-type): Auto-type to focused window
-  - Types transcribed text into other applications
-  - Useful for dictation into browsers, editors, etc.
+Dev: Inference device (cuda=GPU, cpu=CPU, auto=best)
 
-• Dev: Inference device
-  - cuda: Use NVIDIA GPU (fastest)
-  - cpu: Use CPU only
-  - auto: Automatically select best device
+Mem: Context segments 1-10 (higher=better context, slower)
 
-• Mem: Memory/context segments (1-10)
-  - Number of previous segments used as context
-  - Higher = better context but slower
+Pat: Patience seconds (wait time before finalizing segment)
 
-• Pat: Patience in seconds
-  - How long to wait before finalizing a segment
-  - Higher = more accurate but slower updates
+Time: Translation timeout seconds""",
 
-• Time: Translation timeout in seconds
-  - Maximum time to wait for translation service""",
+        "translate": """Src: Source language (auto=detect, or select specific)
 
-        "translate": """Translation/Proofreading
+Tgt: Target language (none=disabled, or select for Google Translate)
 
-• Src (Source): Source language
-  - Set to "auto" for automatic detection
-  - Or select specific language for better accuracy
+Note: AI Processing overrides Google Translate when enabled.""",
 
-• Tgt (Target): Target language
-  - Set to "none" to disable translation
-  - Select language for Google Translate translation
+        "ai": """Enable AI: Intelligent proofreading and translation
 
-Note: If AI Processing is enabled, it will override
-Google Translate for more intelligent translation.""",
+Mode: Proofread | Translate | Proofread+Translate
 
-        "ai": """AI Processing (OpenRouter)
+Model: AI model selection (larger=more capable, higher cost)
 
-• Enable AI: Turn on AI-powered processing
-  - Provides intelligent proofreading and translation
-  - Uses advanced language models
+Trigger: Time (every N min) | Words (every N words)
 
-• Mode: Processing mode
-  - Proofread: Fix grammar, spelling, punctuation
-  - Translate: Translate to target language
-  - Proofread+Translate: Both operations
+Setup: Add OPENROUTER_API_KEY to .env
+See AI_SETUP.md for details.""",
 
-• Model: AI model to use
-  - Different models have different capabilities
-  - Larger models are more capable but cost more
+        "tts": """Enable TTS: Convert text to speech
 
-• Trigger: When to process text
-  - Time: Process every N minutes
-  - Words: Process every N words
+Voice: Browse=upload ref audio for cloning | Clear=default
 
-• Interval/Words: Processing frequency
-  - Adjust based on your speaking speed
-  - Lower = more frequent updates, higher cost
+Save File: Auto-save to tts_output/ with timestamp
 
-Setup: Add OPENROUTER_API_KEY to .env file
-See AI_SETUP.md for detailed instructions.""",
+Format: WAV (lossless) | OGG (compressed)
 
-        "tts": """Text-to-Speech
-
-• Enable TTS: Convert text to speech
-  - Generates audio from transcribed text
-  - Creates one file per session (start/stop)
-
-• Voice: Voice selection
-  - Browse: Upload reference audio for voice cloning
-  - Clear: Use default voice
-
-• Save File: Automatically save TTS output
-  - Saves to tts_output/ directory
-  - Filename includes timestamp
-
-• Format: Audio file format
-  - WAV: Lossless, larger files
-  - OGG: Compressed, smaller files
-
-Setup: See INSTALL_TTS.md for installation."""
+Setup: See INSTALL_TTS.md"""
     }
 
     @staticmethod
     def show(parent, section):
-        """Show help dialog for a section."""
-        if section in HelpDialog.HELP_TEXT:
-            messagebox.showinfo(
-                f"Help - {section.title()}",
-                HelpDialog.HELP_TEXT[section],
-                parent=parent
-            )
+        """Show help dialog for a section with toggle behavior."""
+        if section not in HelpDialog.HELP_TEXT:
+            return
+
+        # Toggle: if dialog is already open for this section, close it
+        if section in HelpDialog._open_dialogs:
+            try:
+                HelpDialog._open_dialogs[section].destroy()
+                del HelpDialog._open_dialogs[section]
+            except:
+                pass
+            return
+
+        # Create new dialog window
+        dialog = tk.Toplevel(parent)
+        dialog.title(f"Help - {section.title()}")
+        dialog.geometry("450x280")
+        dialog.resizable(False, False)
+
+        # Create text widget with scrollbar
+        text_frame = ttk.Frame(dialog)
+        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        text_widget = tk.Text(text_frame, wrap="word", font=('TkDefaultFont', 9),
+                             yscrollcommand=scrollbar.set, padx=8, pady=8)
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=text_widget.yview)
+
+        # Insert help text
+        text_widget.insert("1.0", HelpDialog.HELP_TEXT[section])
+        text_widget.config(state="disabled")  # Read-only
+
+        # Track dialog
+        HelpDialog._open_dialogs[section] = dialog
+
+        # Click outside to close functionality
+        def on_focus_out(event):
+            # Close dialog when clicking outside
+            try:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                    if section in HelpDialog._open_dialogs:
+                        del HelpDialog._open_dialogs[section]
+            except:
+                pass
+
+        # Cleanup on close
+        def on_close():
+            try:
+                if section in HelpDialog._open_dialogs:
+                    del HelpDialog._open_dialogs[section]
+                dialog.destroy()
+            except:
+                pass
+
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Bind focus out after a delay (to avoid immediate close on creation)
+        dialog.after(200, lambda: dialog.bind("<FocusOut>", on_focus_out))
 
 
 # Model VRAM estimates (based on faster-whisper benchmarks)
