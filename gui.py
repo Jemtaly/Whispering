@@ -484,6 +484,10 @@ class App(tk.Tk):
         self.level = [0]
         self.autotype_error_shown = False
 
+        # TTS session tracking
+        self.tts_session_text = ""  # Accumulate text for TTS
+        self.tts_session_id = None  # Current session ID
+
         # Apply loaded text visibility state
         if not self.text_visible:
             # Hide text frame and update button for minimal mode
@@ -529,7 +533,7 @@ class App(tk.Tk):
                     self.status_label.config(text="autotype.py not found")
 
     def on_new_translation(self, text):
-        """Called when NEW translated/proofread text arrives. Triggers TTS if enabled."""
+        """Called when NEW translated/proofread text arrives. Accumulates for session-based TTS."""
         if not text or not self.tts_available or not self.tts_controller:
             return
 
@@ -537,38 +541,31 @@ class App(tk.Tk):
         if "selected" not in self.tts_check.state():
             return
 
+        # Accumulate text for this session
+        self.tts_session_text += text + " "
+
+    def finalize_tts_session(self):
+        """Generate TTS audio from accumulated session text."""
+        if not self.tts_session_text.strip() or not self.tts_available:
+            return
+
         # Check if we should save to file
         save_to_file = "selected" in self.tts_save_check.state()
 
-        if save_to_file:
-            # Generate unique filename with timestamp
-            import time
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            filename = f"tts_{timestamp}"
+        if save_to_file and self.tts_session_id:
             file_format = self.tts_format_combo.get()
+            filename = f"tts_session_{self.tts_session_id}"
 
-            # Synthesize and save to file in background thread
+            # Synthesize accumulated text to single file
             self.tts_controller.synthesize_to_file(
-                text=text,
+                text=self.tts_session_text.strip(),
                 output_filename=filename,
                 file_format=file_format,
                 async_mode=True
             )
-        else:
-            # Just synthesize for playback (don't save)
-            # For now, we still save to temp file since we don't have audio playback yet
-            # TODO: Add audio playback functionality
-            import time
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            filename = f"tts_temp_{timestamp}"
 
-            # Still save for now (future: add sounddevice playback)
-            self.tts_controller.synthesize_to_file(
-                text=text,
-                output_filename=filename,
-                file_format="wav",
-                async_mode=True
-            )
+        # Reset session
+        self.tts_session_text = ""
 
     def on_model_changed(self, event=None):
         """Update VRAM label when model changes."""
@@ -713,6 +710,11 @@ class App(tk.Tk):
         self.status_label.config(text="")
         self.autotype_error_shown = False  # Reset error flag
         self.control_button.config(text="Starting...", command=None, state="disabled")
+
+        # Start new TTS session
+        import time
+        self.tts_session_id = time.strftime("%Y%m%d_%H%M%S")
+        self.tts_session_text = ""
         # Get mic index: use smart default or stored index
         combo_idx = self.mic_combo.current()
         if combo_idx == 0:
@@ -804,6 +806,9 @@ class App(tk.Tk):
         if self.ready[0] is None:
             self.control_button.config(text="Start", command=self.start, state="normal")
             self.level_bar['value'] = 0
+
+            # Finalize TTS session when stopping completes
+            self.finalize_tts_session()
             return
         self.after(100, self.stopping)
 
