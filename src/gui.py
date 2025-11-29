@@ -1007,4 +1007,8 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    try:
+        App().mainloop()
+    except KeyboardInterrupt:
+        # Graceful exit on Ctrl+C
+        pass
