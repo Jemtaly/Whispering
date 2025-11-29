@@ -59,21 +59,40 @@ class TTSProvider:
 
         try:
             if self.model_type == "multilingual":
-                from chatterbox import ChatterboxMultilingualTTS
+                from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+                print(f"Loading multilingual TTS model on {self.device}...")
                 self.model = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
             else:
-                from chatterbox import ChatterboxTTS
+                from chatterbox.tts import ChatterboxTTS
+                print(f"Loading TTS model on {self.device}...")
                 self.model = ChatterboxTTS.from_pretrained(device=self.device)
 
             self._initialized = True
-            print(f"TTS model loaded on {self.device}")
+            print(f"✓ TTS model loaded successfully on {self.device}")
 
         except ImportError as e:
-            raise ImportError(
-                "ChatterboxTTS not installed. Install with: pip install chatterbox-tts"
-            ) from e
+            error_msg = (
+                "ChatterboxTTS not installed.\n"
+                "Install with: pip install chatterbox-tts --no-deps\n"
+                "See INSTALL_TTS.md for details."
+            )
+            raise ImportError(error_msg) from e
+        except RuntimeError as e:
+            # Check for common CUDA/cuDNN errors
+            error_str = str(e)
+            if "cuDNN" in error_str or "CUDA" in error_str:
+                error_msg = (
+                    f"Failed to initialize TTS model - CUDA/cuDNN error:\n{e}\n\n"
+                    "This is likely a cuDNN version mismatch.\n"
+                    "PyTorch comes with its own cuDNN - don't install nvidia-cudnn separately.\n"
+                    "Check run.sh doesn't add conflicting cuDNN to LD_LIBRARY_PATH.\n"
+                    "Run: python debug_cuda.py for detailed diagnostics."
+                )
+                raise RuntimeError(error_msg) from e
+            else:
+                raise RuntimeError(f"Failed to initialize TTS model: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize TTS model: {e}") from e
+            raise RuntimeError(f"Unexpected error initializing TTS: {e}") from e
 
     def synthesize(
         self,

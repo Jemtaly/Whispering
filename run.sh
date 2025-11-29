@@ -5,13 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_VERSION=$(ls "$SCRIPT_DIR/.venv/lib/" | grep python | head -1)
 VENV_SITE="$SCRIPT_DIR/.venv/lib/$PYTHON_VERSION/site-packages"
 
-# Add NVIDIA CUDA libraries to path
-export LD_LIBRARY_PATH="$VENV_SITE/nvidia/cublas/lib:$VENV_SITE/nvidia/cudnn/lib:$LD_LIBRARY_PATH"
+# IMPORTANT: PyTorch comes with its own bundled cuDNN
+# DO NOT add nvidia/cudnn to LD_LIBRARY_PATH - it causes version conflicts
+# Only add cublas if needed for CUDA operations
+if [ -d "$VENV_SITE/nvidia/cublas/lib" ]; then
+    export LD_LIBRARY_PATH="$VENV_SITE/nvidia/cublas/lib:$LD_LIBRARY_PATH"
+fi
 
 # Prefer PulseAudio/PipeWire over ALSA for audio
 export SDL_AUDIODRIVER=pulse
 
 source "$SCRIPT_DIR/.venv/bin/activate"
 
-# Run GUI, filtering ALSA noise but keeping real errors
+# Debug mode: uncomment to see full errors
+# python "$SCRIPT_DIR/gui.py" "$@"
+
+# Production mode: filter ALSA noise
 python "$SCRIPT_DIR/gui.py" "$@" 2> >(grep -v "^ALSA lib\|^Expression '" >&2)
