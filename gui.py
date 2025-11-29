@@ -139,6 +139,7 @@ class App(tk.Tk):
         self.target_label = ttk.Label(self.bot_frame, text="Target:")
         self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + core.targets, state="readonly")
         self.target_combo.current(0)
+        self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
         self.prompt_label = ttk.Label(self.bot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.bot_frame, state="normal")
 
@@ -150,8 +151,8 @@ class App(tk.Tk):
             self.ai_check.state(("disabled",))
 
         self.ai_mode_label = ttk.Label(self.bot_frame, text="Mode:")
-        self.ai_mode_combo = ttk.Combobox(self.bot_frame, values=["Translate", "Proofread+Translate"], state="readonly", width=18)
-        self.ai_mode_combo.current(1)  # Default to Proofread+Translate
+        self.ai_mode_combo = ttk.Combobox(self.bot_frame, values=["Proofread", "Translate", "Proofread+Translate"], state="readonly", width=18)
+        self.ai_mode_combo.current(0)  # Default to Proofread only
         if not self.ai_available:
             self.ai_mode_combo.state(("disabled",))
 
@@ -218,6 +219,20 @@ class App(tk.Tk):
                     self.autotype_error_shown = True
                     self.status_label.config(text="autotype.py not found")
 
+    def on_target_changed(self, event=None):
+        """Update AI mode options based on target language selection."""
+        target = self.target_combo.get()
+
+        if target == "none":
+            # No translation - only show Proofread option
+            self.ai_mode_combo.config(values=["Proofread"])
+            self.ai_mode_combo.current(0)
+        else:
+            # Translation enabled - show all options
+            self.ai_mode_combo.config(values=["Proofread", "Translate", "Proofread+Translate"])
+            # Default to Proofread+Translate when translation is enabled
+            self.ai_mode_combo.current(2)
+
     def refresh_mics(self):
         current = self.mic_combo.get()
         self.mic_list = core.get_mic_names()
@@ -266,9 +281,19 @@ class App(tk.Tk):
                 models = self.ai_config.get_models()
                 selected_model_id = models[model_idx]['id']
 
-                # Get selected mode
-                mode_idx = self.ai_mode_combo.current()
-                mode = "translate" if mode_idx == 0 else "proofread_translate"
+                # Determine mode based on selection and target language
+                mode_text = self.ai_mode_combo.get()
+                if target is None:
+                    # No target language - force proofread mode
+                    mode = "proofread"
+                else:
+                    # Map UI text to mode
+                    mode_map = {
+                        "Proofread": "proofread",
+                        "Translate": "translate",
+                        "Proofread+Translate": "proofread_translate"
+                    }
+                    mode = mode_map.get(mode_text, "proofread")
 
                 # Create AI processor
                 ai_processor = AITextProcessor(
@@ -279,7 +304,8 @@ class App(tk.Tk):
                     target_lang=target
                 )
 
-                self.status_label.config(text=f"AI: {models[model_idx]['name']}", foreground="green")
+                mode_display = mode.replace('_', '+').title()
+                self.status_label.config(text=f"AI: {models[model_idx]['name']} ({mode_display})", foreground="green")
             except Exception as e:
                 self.status_label.config(text=f"AI Error: {str(e)[:50]}", foreground="red")
                 print(f"Failed to initialize AI processor: {e}")

@@ -189,9 +189,9 @@ class AITextProcessor:
         Args:
             config: AIConfig instance
             model_id: Model to use (defaults to config default)
-            mode: 'translate' or 'proofread_translate'
+            mode: 'proofread', 'translate', or 'proofread_translate'
             source_lang: Source language (None or 'auto' for auto-detect)
-            target_lang: Target language code
+            target_lang: Target language code (None for proofread-only mode)
         """
         self.config = config
         self.provider = OpenRouterProvider(config, model_id)
@@ -200,11 +200,14 @@ class AITextProcessor:
         self.target_lang = target_lang
 
         # Validate mode
-        if mode not in ['translate', 'proofread_translate']:
-            raise ValueError(f"Invalid mode: {mode}. Use 'translate' or 'proofread_translate'")
+        if mode not in ['proofread', 'translate', 'proofread_translate']:
+            raise ValueError(f"Invalid mode: {mode}. Use 'proofread', 'translate', or 'proofread_translate'")
 
         # Get system prompt
-        self.system_prompt = config.format_prompt(mode, source_lang or 'auto', target_lang)
+        if mode == 'proofread':
+            self.system_prompt = config.format_prompt(mode)
+        else:
+            self.system_prompt = config.format_prompt(mode, source_lang or 'auto', target_lang)
 
         # Get defaults
         defaults = config.get_defaults()

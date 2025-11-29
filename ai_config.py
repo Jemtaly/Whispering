@@ -8,6 +8,10 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class AIConfig:
@@ -80,19 +84,23 @@ class AIConfig:
         """Get default settings."""
         return self.config['defaults']
 
-    def format_prompt(self, mode: str, source_lang: str, target_lang: str) -> str:
+    def format_prompt(self, mode: str, source_lang: str = None, target_lang: str = None) -> str:
         """
         Get formatted system prompt with language substitution.
 
         Args:
-            mode: 'translate' or 'proofread_translate'
-            source_lang: Source language code or 'auto'
-            target_lang: Target language code
+            mode: 'proofread', 'translate', or 'proofread_translate'
+            source_lang: Source language code or 'auto' (optional for proofread mode)
+            target_lang: Target language code (optional for proofread mode)
 
         Returns:
             Formatted system prompt
         """
         template = self.get_prompt(mode)
+
+        # Proofread mode doesn't need language substitution
+        if mode == 'proofread':
+            return template
 
         # Format source language
         if source_lang == 'auto' or not source_lang:

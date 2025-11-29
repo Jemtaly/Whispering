@@ -103,18 +103,21 @@ Testing translation mode...
 
 2. Configure transcription settings as usual (mic, model, etc.)
 
-3. **Enable AI Processing**:
+3. **Set Target Language**:
+   - If you want **proofreading only**: Set Target to `none`
+   - If you want **translation**: Select your target language
+
+4. **Enable AI Processing**:
    - Check the **AI** checkbox
-   - Select **Mode**:
+   - Select **Mode** (options depend on target language):
+     - `Proofread`: Fix spelling/grammar only (no translation)
      - `Translate`: Direct AI translation (context-aware)
      - `Proofread+Translate`: Fix errors first, then translate
    - Select **Model**: Choose your preferred AI model
 
-4. Set source and target languages as usual
-
 5. Click **Start** and begin speaking!
 
-### What Happens
+### How It Works
 
 ```
 Your Speech
@@ -123,15 +126,27 @@ Whisper Transcription (speech-to-text)
     ↓
 Paragraph Detection (adaptive)
     ↓
-AI Processing:
-  - Mode: Proofread+Translate
+AI Processing (paragraph-based batching):
+  - Waits for paragraph completion before processing
+  - Reduces API calls and improves context
+
+  Mode: Proofread (no target language)
+    → Fix spelling/grammar errors only
+
+  Mode: Translate (with target language)
+    → Direct translation with context
+
+  Mode: Proofread+Translate (with target language)
     1. Fix spelling/grammar errors
     2. Translate to target language
-  - Mode: Translate
-    1. Direct translation with context
     ↓
-Formatted, Corrected Translation
+Formatted, Corrected Text/Translation
 ```
+
+**Key Benefits**:
+- ⏱️ **Paragraph-based processing**: Processes complete paragraphs for better context
+- 🎯 **Intelligent batching**: Reduces API calls while maintaining responsiveness
+- 🔄 **Real-time preview**: See provisional text while paragraph is being spoken
 
 ## Available Models
 

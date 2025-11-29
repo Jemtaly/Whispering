@@ -397,34 +397,38 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
     def tl_proc():
         rsrv_src = ""
+        accumulated_done = ""  # Accumulate done text for paragraph-based processing
+
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
 
             # Use AI processing if available
             if ai_processor:
-                # Process done text
-                if done_src or rsrv_src:
-                    done_src = rsrv_src + done_src
-                    # Split into sentences to reserve last incomplete one
-                    sentences = done_src.split('. ')
-                    if len(sentences) > 1:
-                        to_process = '. '.join(sentences[:-1]) + '.'
-                        rsrv_src = sentences[-1]
-                    else:
-                        to_process = done_src
-                        rsrv_src = ""
+                # Accumulate done text
+                if done_src:
+                    accumulated_done += done_src
 
-                    # Process with AI
-                    done_tgt, ai_error = ai_translate(to_process, ai_processor)
-                    if ai_error:
-                        # Log error to console but continue with result
-                        print(f"AI Error: {ai_error}", flush=True)
-                else:
-                    done_tgt = ""
+                # Process accumulated text only when we have paragraph breaks
+                # This reduces API calls and improves context
+                done_tgt = ""
+                if accumulated_done and '\n\n' in accumulated_done:
+                    # Split on paragraph breaks
+                    parts = accumulated_done.split('\n\n')
+                    # Keep last part (incomplete paragraph) in accumulated_done
+                    to_process = '\n\n'.join(parts[:-1])
+                    accumulated_done = parts[-1]
 
-                # Process current (provisional) text
-                curr_to_process = rsrv_src + curr_src if rsrv_src else curr_src
-                if curr_to_process:
+                    if to_process:
+                        # Process with AI
+                        processed, ai_error = ai_translate(to_process, ai_processor)
+                        if ai_error:
+                            # Log error to console but continue with result
+                            print(f"AI Error: {ai_error}", flush=True)
+                        done_tgt = processed + '\n\n'  # Add back paragraph break
+
+                # Process current (provisional) text with accumulated
+                curr_to_process = accumulated_done + curr_src if accumulated_done else curr_src
+                if curr_to_process and curr_to_process.strip():
                     curr_tgt, _ = ai_translate(curr_to_process, ai_processor)
                 else:
                     curr_tgt = ""
@@ -443,6 +447,12 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 curr_snt = translate(curr_src, source, target, timeout)
                 curr_tgt = "".join(t for s, t in curr_snt)
                 tlres_queue.put((done_tgt, curr_tgt))
+
+        # Process any remaining accumulated text on exit
+        if ai_processor and accumulated_done and accumulated_done.strip():
+            final_tgt, _ = ai_translate(accumulated_done, ai_processor)
+            tlres_queue.put((final_tgt, ""))
+
         tlres_queue.put(None)
 
     try:
