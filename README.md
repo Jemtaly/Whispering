@@ -2,6 +2,15 @@
 
 Real-time speech transcription and translation using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Google Translate. Available in both GUI and TUI versions.
 
+## Quick Start
+
+```bash
+git clone https://github.com/Jemtaly/Whispering.git
+cd Whispering
+./scripts/install.sh  # Install dependencies
+./scripts/run.sh      # Run the GUI
+```
+
 ## Features
 
 - **Real-time transcription** with iterative refinement for accuracy
@@ -56,20 +65,47 @@ See [INSTALL_TTS.md](INSTALL_TTS.md) for installation instructions.
 
 ## Installation
 
+### Quick Install (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/Jemtaly/Whispering.git
+cd Whispering
+
+# Run the installation script
+./scripts/install.sh
+```
+
+The install script will:
+- Check Python version (3.8+ required)
+- Create a virtual environment
+- Install all dependencies
+- Optionally install CUDA libraries (if GPU detected)
+- Create necessary directories
+- Set up the .env file from template
+
+### Manual Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/Jemtaly/Whispering.git
 cd Whispering
 
 # Create virtual environment
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# For CUDA support, install NVIDIA libraries
+# For CUDA support, install NVIDIA libraries (optional)
 pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+
+# Create necessary directories
+mkdir -p log_output tts_output
+
+# Copy environment template (for AI features)
+cp config/.env.example .env
 ```
 
 ## Dependencies

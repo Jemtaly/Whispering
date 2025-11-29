@@ -26,6 +26,7 @@ Whispering/
 │   └── .env.example       # Environment variables template
 │
 ├── scripts/               # Shell scripts
+│   ├── install.sh        # Installation script
 │   ├── run.sh            # Main launcher script
 │   └── debug_env.sh      # Environment debugging
 │
@@ -55,7 +56,8 @@ Configuration files that control application behavior:
 - `.env.example` - Template for environment variables (copy to `.env` in project root)
 
 ### Scripts (`scripts/`)
-Helper scripts for running the application:
+Helper scripts for setup and running the application:
+- `install.sh` - Automated installation and setup
 - `run.sh` - Launch the GUI with proper environment setup
 - `debug_env.sh` - Diagnose CUDA and audio issues
 
@@ -71,6 +73,21 @@ Each log file includes:
 - Timestamped transcript entries
 
 **Note:** This directory is gitignored to keep your transcripts private.
+
+## Installation
+
+### Quick Install
+```bash
+./scripts/install.sh
+```
+
+The install script will:
+- Check Python version (3.8+ required)
+- Create virtual environment
+- Install all dependencies
+- Optionally install CUDA libraries
+- Create necessary directories
+- Set up .env file from template
 
 ## Running the Application
 
