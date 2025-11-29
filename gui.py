@@ -10,43 +10,65 @@ from cmque import PairDeque, Queue
 
 
 class Text(tk.Text):
-    def __init__(self, master):
+    def __init__(self, master, on_new_text=None):
         super().__init__(master)
         self.res_queue = Queue(PairDeque())
+        self.on_new_text = on_new_text  # Callback for NEW text only
         self.tag_config("done", foreground="black")
         self.tag_config("curr", foreground="blue", underline=True)
         self.insert("end", "  ", "done")
         self.record = self.index("end-1c")
+        self.prev_done = ""  # Track what we've already processed
         self.see("end")
-        self.config(state="disabled")
-        self.update()
+        # Keep text editable! No state="disabled"
+        self.poll()
 
-    def update(self):
+    def poll(self):
         while self.res_queue:
-            self.config(state="normal")
             if res := self.res_queue.get():
                 done, curr = res
+                # Calculate NEW text (what we haven't processed yet)
+                new_text = ""
+                if len(done) > len(self.prev_done):
+                    new_text = done[len(self.prev_done):]
+                self.prev_done = done
+                
+                # Update display
                 self.delete(self.record, "end")
                 self.insert("end", done, "done")
                 self.record = self.index("end-1c")
                 self.insert("end", curr, "curr")
+                self.see("end")
+                
+                # Fire callback with only NEW text
+                if new_text and self.on_new_text:
+                    self.on_new_text(new_text)
             else:
+                # Stop signal - finalize current line
                 done = self.get(self.record, "end-1c")
                 self.delete(self.record, "end")
                 self.insert("end", done, "done")
                 self.insert("end", "\n", "done")
                 self.insert("end", "  ", "done")
                 self.record = self.index("end-1c")
-            self.see("end")
-            self.config(state="disabled")
-        self.after(100, self.update)  # avoid busy waiting
+                self.prev_done = ""  # Reset for next segment
+                self.see("end")
+        self.after(100, self.poll)
+    
+    def clear(self):
+        """Clear all text and reset state."""
+        self.delete("1.0", "end")
+        self.insert("end", "  ", "done")
+        self.record = self.index("end-1c")
+        self.prev_done = ""
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Whispering")
-        self.ts_text = Text(self)
+        self.autotype_enabled = False  # Track autotype state
+        self.ts_text = Text(self, on_new_text=self.on_new_transcription)
         self.tl_text = Text(self)
         self.top_frame = ttk.Frame(self)
         self.bot_frame = ttk.Frame(self)
@@ -70,6 +92,8 @@ class App(tk.Tk):
         self.vad_check.state(("!alternate", "selected"))
         self.para_check = ttk.Checkbutton(self.top_frame, text="¶", onvalue=True, offvalue=False)  # Pilcrow symbol for paragraph
         self.para_check.state(("!alternate", "selected"))  # enabled by default
+        self.type_check = ttk.Checkbutton(self.top_frame, text="⌨", onvalue=True, offvalue=False)  # Keyboard symbol for auto-type
+        self.type_check.state(("!alternate",))  # disabled by default
         self.device_label = ttk.Label(self.top_frame, text="Device:")
         self.device_combo = ttk.Combobox(self.top_frame, values=core.devices, state="readonly", width=6)
         self.device_combo.current(1)  # default to CUDA
@@ -89,6 +113,7 @@ class App(tk.Tk):
         self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.vad_check.pack(side="left", padx=(0, 5))
         self.para_check.pack(side="left", padx=(0, 5))
+        self.type_check.pack(side="left", padx=(0, 5))
         self.device_label.pack(side="left", padx=(5, 5))
         self.device_combo.pack(side="left", padx=(0, 5))
         self.memory_label.pack(side="left", padx=(5, 5))
@@ -122,6 +147,26 @@ class App(tk.Tk):
         self.ready = [None]
         self.error = [None]
         self.level = [0]  # Audio level indicator
+        self.autotype_error_shown = False  # Only show error once
+    
+    def on_new_transcription(self, text):
+        """Called when NEW transcription text arrives. Auto-types if enabled."""
+        if self.autotype_enabled and text:
+            try:
+                import autotype
+                # Type immediately in a thread
+                def do_type():
+                    if not autotype.type_text(text, restore_clipboard=False):
+                        if not self.autotype_error_shown:
+                            self.autotype_error_shown = True
+                            # Show error in status (thread-safe via after)
+                            self.after(0, lambda: self.status_label.config(
+                                text="Auto-type failed. Run: python autotype.py --check"))
+                threading.Thread(target=do_type, daemon=True).start()
+            except ImportError:
+                if not self.autotype_error_shown:
+                    self.autotype_error_shown = True
+                    self.status_label.config(text="autotype.py not found")
 
     def refresh_mics(self):
         current = self.mic_combo.get()
@@ -138,6 +183,7 @@ class App(tk.Tk):
         self.ready[0] = False
         self.error[0] = None
         self.status_label.config(text="")
+        self.autotype_error_shown = False  # Reset error flag
         self.control_button.config(text="Starting...", command=None, state="disabled")
         # Get mic index: use smart default or stored index
         combo_idx = self.mic_combo.current()
@@ -149,6 +195,7 @@ class App(tk.Tk):
         model = self.model_combo.get()
         vad = self.vad_check.instate(("selected",))
         para_detect = self.para_check.instate(("selected",))
+        self.autotype_enabled = self.type_check.instate(("selected",))  # Capture autotype state
         memory = int(self.memory_spin.get())
         patience = float(self.patience_spin.get())
         timeout = float(self.timeout_spin.get())
@@ -173,6 +220,7 @@ class App(tk.Tk):
         self.after(100, self.starting)
 
     def stop(self):
+        self.autotype_enabled = False  # Disable autotype when stopping
         self.ready[0] = False
         self.control_button.config(text="Stopping...", command=None, state="disabled")
         self.stopping()

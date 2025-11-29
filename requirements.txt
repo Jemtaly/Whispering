@@ -4,3 +4,7 @@ wheel
 faster-whisper
 sounddevice
 numpy
+
+# Optional: for auto-type feature (Windows/macOS/Linux X11)
+# Linux Wayland users should install wtype or ydotool instead
+pyautogui

@@ -6,6 +6,8 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 
 - **Real-time transcription** with iterative refinement for accuracy
 - **Live translation** to 100+ languages via Google Translate
+- **Auto-type to any app** - dictate directly into browsers, editors, chat apps
+- **Editable transcript** - manually edit text and add paragraph breaks
 - **GPU acceleration** with CUDA support for fast inference
 - **Adaptive paragraph detection** based on speech pause patterns
 - **Audio level meter** to verify microphone input
@@ -42,6 +44,7 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 - [sounddevice](https://python-sounddevice.readthedocs.io/) - Cross-platform audio I/O
 - [numpy](https://numpy.org/) - Array processing
 - [requests](https://requests.readthedocs.io/) - HTTP client for translation API
+- [pyautogui](https://pyautogui.readthedocs.io/) - Optional, for auto-type feature (Windows/macOS/Linux X11)
 
 ## Usage
 
@@ -64,6 +67,7 @@ python gui.py
 - **Model** - Whisper model size (default: large-v3)
 - **VAD** - Voice Activity Detection filter
 - **¶** - Adaptive paragraph detection (inserts line breaks based on pauses)
+- **⌨** - Auto-type: paste transcribed text into focused window
 - **Device** - Inference device: cpu, cuda, or auto
 - **Memory** - Number of previous segments used as context
 - **Patience** - Seconds to wait before finalizing a segment
@@ -186,6 +190,68 @@ The paragraph detection feature automatically inserts line breaks based on the s
 - Decrease `--para-threshold` (e.g., 1.0) for more frequent breaks
 - Adjust `--para-min-pause` if natural speech hesitations trigger false breaks
 
+### Auto-Type Feature
+
+The auto-type feature (⌨ checkbox) types transcribed text directly into the currently focused window as you speak. This allows you to dictate into any application: browsers, text editors, chat apps, etc.
+
+**How it works:**
+1. Enable the ⌨ checkbox before clicking Start
+2. Click on the target window (browser, Discord, VS Code, etc.) to focus it
+3. Speak into your microphone
+4. Text appears in the focused window as it's transcribed
+
+**Platform support:**
+
+| Platform | Method | Setup Required |
+|----------|--------|----------------|
+| Windows | pyautogui | `pip install pyautogui` |
+| macOS | pyautogui | `pip install pyautogui` + Accessibility permissions |
+| Linux X11 | xdotool (preferred) | `sudo apt install xdotool xclip` |
+| Linux Wayland | wtype or ydotool | See below |
+
+**Linux X11 setup (recommended):**
+
+```bash
+# Install xdotool and xclip (fast, no Python packages needed)
+sudo apt install xdotool xclip
+
+# Or on Arch
+sudo pacman -S xdotool xclip
+```
+
+**Linux Wayland setup:**
+
+```bash
+# Option 1: wtype + wl-clipboard (recommended for Wayland-native apps)
+sudo apt install wtype wl-clipboard
+
+# Option 2: ydotool (works with XWayland apps too)
+sudo apt install ydotool
+sudo systemctl enable --now ydotool
+sudo usermod -aG input $USER  # then re-login
+```
+
+**Editing the transcript:**
+
+The left text window is now editable! You can:
+- Click anywhere to place cursor and edit text
+- Press Enter to add manual paragraph breaks
+- Select and delete text
+- Copy/paste within the window
+
+**Check your setup:**
+
+```bash
+python autotype.py --check
+```
+
+**Test auto-typing:**
+
+```bash
+python autotype.py --test "Hello, world!"
+# Click on target window within 3 seconds
+```
+
 ## CUDA Setup
 
 For GPU acceleration with CUDA 12:
@@ -208,6 +274,7 @@ Whispering/
 ├── tui.py           # TUI application (curses)
 ├── core.py          # Core transcription/translation logic
 ├── cmque.py         # Thread-safe queue utilities
+├── autotype.py      # Cross-platform typing utility
 ├── run.sh           # Launcher script (sets CUDA paths)
 ├── debug_audio.py   # Audio device diagnostics
 └── requirements.txt # Python dependencies
@@ -243,6 +310,13 @@ To use a different translation service, modify the `translate()` function in `co
 - Use a smaller model (base, small) instead of large-v3
 - Enable CUDA if you have an NVIDIA GPU
 - Reduce the `memory` parameter
+
+**Auto-type not working**
+- Run `python autotype.py --check` to see available backends
+- Linux X11: Install xdotool and xclip: `sudo apt install xdotool xclip`
+- Linux Wayland: Install wtype: `sudo apt install wtype wl-clipboard`
+- Windows/macOS: Install pyautogui: `pip install pyautogui`
+- Test with: `python autotype.py --test "Hello"`
 
 ## License
 
