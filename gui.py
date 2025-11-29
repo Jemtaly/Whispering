@@ -490,6 +490,25 @@ class App(tk.Tk):
             self.text_frame.grid_remove()
             self.hide_text_button.config(text="Show Text ▶")
 
+        # Load and apply TTS settings
+        if self.tts_available:
+            tts_enabled = self.settings.get("tts_enabled", False)
+            tts_save_file = self.settings.get("tts_save_file", False)
+
+            if tts_enabled:
+                self.tts_check.state(("selected",))
+            if tts_save_file:
+                self.tts_save_check.state(("selected",))
+
+        # Load and apply AI settings
+        if self.ai_available:
+            ai_enabled = self.settings.get("ai_enabled", False)
+            if ai_enabled:
+                self.ai_check.state(("selected",))
+
+        # Save settings on window close
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
         if self.autotype_enabled and text:
@@ -653,6 +672,29 @@ class App(tk.Tk):
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
         self.settings.save()
+
+    def on_closing(self):
+        """Save settings before closing the window."""
+        # Save text visibility (already saved in toggle, but ensure it's current)
+        self.settings.set("text_visible", self.text_visible)
+
+        # Save TTS settings
+        if self.tts_available:
+            tts_enabled = "selected" in self.tts_check.state()
+            tts_save_file = "selected" in self.tts_save_check.state()
+            self.settings.set("tts_enabled", tts_enabled)
+            self.settings.set("tts_save_file", tts_save_file)
+
+        # Save AI settings
+        if self.ai_available:
+            ai_enabled = "selected" in self.ai_check.state()
+            self.settings.set("ai_enabled", ai_enabled)
+
+        # Persist to disk
+        self.settings.save()
+
+        # Close the window
+        self.destroy()
 
     def refresh_mics(self):
         current = self.mic_combo.get()

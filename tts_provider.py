@@ -135,22 +135,32 @@ class TTSProvider:
 
         try:
             # Generate audio
-            # Note: ChatterboxTTS uses 'audio_prompt_path' parameter
+            # Note: ChatterboxTTS API parameters vary by version
+            # Using minimal parameters that should work across versions
             if self.model_type == "multilingual":
-                audio = self.model.generate(
-                    text=text,
-                    audio_prompt_path=reference_audio_path,
-                    language=language,
-                    exaggeration=exaggeration,
-                    cfg=cfg
-                )
+                # Try with all optional parameters as kwargs
+                kwargs = {"text": text}
+                if reference_audio_path:
+                    kwargs["audio_prompt_path"] = reference_audio_path
+                if language:
+                    kwargs["language"] = language
+                # Try cfg_weight (common diffusion param) or skip if not supported
+                try:
+                    audio = self.model.generate(**kwargs, exaggeration=exaggeration, cfg_weight=cfg)
+                except TypeError:
+                    # Fallback: try without cfg_weight
+                    audio = self.model.generate(**kwargs, exaggeration=exaggeration)
             else:
-                audio = self.model.generate(
-                    text=text,
-                    audio_prompt_path=reference_audio_path,
-                    exaggeration=exaggeration,
-                    cfg=cfg
-                )
+                # Standard model
+                kwargs = {"text": text}
+                if reference_audio_path:
+                    kwargs["audio_prompt_path"] = reference_audio_path
+                # Try cfg_weight or skip if not supported
+                try:
+                    audio = self.model.generate(**kwargs, exaggeration=exaggeration, cfg_weight=cfg)
+                except TypeError:
+                    # Fallback: try without cfg_weight
+                    audio = self.model.generate(**kwargs, exaggeration=exaggeration)
 
             # Convert to numpy array if needed
             if isinstance(audio, torch.Tensor):
