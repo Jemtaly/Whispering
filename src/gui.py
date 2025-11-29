@@ -130,12 +130,17 @@ class App(tk.Tk):
         # Load text visibility state from settings (default: True)
         self.text_visible = self.settings.get("text_visible", True)
 
+        # Flag to track if we're shutting down (prevent TTS crashes)
+        self.is_shutting_down = False
+
         # Set minimum window size - will adjust based on mode
-        # Increased height by 20% (600 -> 720)
+        # For minimal mode: calculate based on controls, for full mode add space for text
+        # Minimal mode: ~650px fits all controls with padding
+        # Full mode: ~720px gives more space for text panels
         if self.text_visible:
-            self.minsize(900, 720)  # Full mode
+            self.minsize(900, 720)  # Full mode - more vertical space for text
         else:
-            self.minsize(380, 720)  # Minimal mode
+            self.minsize(380, 650)  # Minimal mode - compact height for controls
 
         # Try to load AI configuration
         self.ai_config = None
@@ -671,18 +676,21 @@ class App(tk.Tk):
 
     def on_tts_progress(self, message: str):
         """Called during TTS synthesis progress."""
-        self.after(0, lambda: self.tts_status_label.config(text=message, foreground="blue"))
+        if not self.is_shutting_down:
+            self.after(0, lambda: self.tts_status_label.config(text=message, foreground="blue"))
 
     def on_tts_complete(self, filepath: str):
         """Called when TTS synthesis completes."""
-        filename = filepath.split("/")[-1]
-        self.after(0, lambda: self.tts_status_label.config(
-            text=f"✓ Saved: {filename}", foreground="green"))
+        if not self.is_shutting_down:
+            filename = filepath.split("/")[-1]
+            self.after(0, lambda: self.tts_status_label.config(
+                text=f"✓ Saved: {filename}", foreground="green"))
 
     def on_tts_error(self, error_msg: str):
         """Called when TTS synthesis fails."""
-        self.after(0, lambda: self.tts_status_label.config(
-            text=f"TTS error: {error_msg}", foreground="red"))
+        if not self.is_shutting_down:
+            self.after(0, lambda: self.tts_status_label.config(
+                text=f"TTS error: {error_msg}", foreground="red"))
 
     def toggle_text_display(self):
         """Toggle visibility of text panes."""
@@ -696,12 +704,11 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)
             self.columnconfigure(1, weight=0)  # Text column won't expand
 
-            # Adjust minimum size for minimal mode (narrow column)
-            self.minsize(380, 720)
+            # Adjust minimum size for minimal mode (compact height for controls)
+            self.minsize(380, 650)
 
-            # Optionally resize window to minimal width
-            current_height = self.winfo_height()
-            self.geometry(f"380x{current_height}")
+            # Resize window to minimal width and compact height
+            self.geometry("380x650")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
@@ -712,12 +719,11 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=0, minsize=350)  # Controls fixed
             self.columnconfigure(1, weight=1)  # Text column expands
 
-            # Restore minimum size for full mode (two columns)
+            # Restore minimum size for full mode (more height for text panels)
             self.minsize(900, 720)
 
-            # Optionally resize window to show both columns
-            current_height = self.winfo_height()
-            self.geometry(f"900x{current_height}")
+            # Resize window to show both columns with more height
+            self.geometry("900x720")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
@@ -725,23 +731,53 @@ class App(tk.Tk):
 
     def on_closing(self):
         """Save settings before closing the window."""
+        # Set shutdown flag to prevent TTS thread crashes
+        self.is_shutting_down = True
+
+        # Stop any ongoing transcription first
+        if hasattr(self, 'ready') and self.ready[0] is not None:
+            self.ready[0] = False
+            # Give threads a moment to notice the flag
+            self.after(100, self._continue_closing)
+        else:
+            self._continue_closing()
+
+    def _continue_closing(self):
+        """Continue with cleanup after stopping transcription."""
         # Save text visibility (already saved in toggle, but ensure it's current)
         self.settings.set("text_visible", self.text_visible)
 
         # Save TTS settings
         if self.tts_available:
-            tts_enabled = "selected" in self.tts_check.state()
-            tts_save_file = "selected" in self.tts_save_check.state()
-            self.settings.set("tts_enabled", tts_enabled)
-            self.settings.set("tts_save_file", tts_save_file)
+            try:
+                tts_enabled = "selected" in self.tts_check.state()
+                tts_save_file = "selected" in self.tts_save_check.state()
+                self.settings.set("tts_enabled", tts_enabled)
+                self.settings.set("tts_save_file", tts_save_file)
+            except Exception as e:
+                print(f"Error saving TTS settings: {e}")
 
         # Save AI settings
         if self.ai_available:
-            ai_enabled = "selected" in self.ai_check.state()
-            self.settings.set("ai_enabled", ai_enabled)
+            try:
+                ai_enabled = "selected" in self.ai_check.state()
+                self.settings.set("ai_enabled", ai_enabled)
+            except Exception as e:
+                print(f"Error saving AI settings: {e}")
 
         # Persist to disk
         self.settings.save()
+
+        # Clean up TTS controller gracefully
+        if self.tts_controller is not None:
+            try:
+                # Clear callbacks to prevent accessing destroyed widgets
+                self.tts_controller.on_progress = None
+                self.tts_controller.on_complete = None
+                self.tts_controller.on_error = None
+                self.tts_controller = None
+            except Exception as e:
+                print(f"Error cleaning up TTS: {e}")
 
         # Close the window
         self.destroy()
