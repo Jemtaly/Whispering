@@ -8,6 +8,9 @@ secrets.yaml
 # AI Configuration (if it contains keys)
 ai_config_local.yaml
 
+# User Settings/Preferences
+whispering_settings.json
+
 # Python
 __pycache__/
 *.py[cod]

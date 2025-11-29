@@ -347,7 +347,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -396,10 +396,15 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         tsres_queue.put(None)
 
     def tl_proc():
+        import time
+
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
+        last_process_time = time.time()  # Track when we last processed
+
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
         MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
+        PROCESS_INTERVAL_SECONDS = ai_process_interval * 60  # Convert minutes to seconds
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -416,13 +421,18 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 has_paragraph_break = '\n\n' in accumulated_done
                 has_min_chars = len(accumulated_done) >= MIN_CHARS_TO_PROCESS
                 has_max_chars = len(accumulated_done) >= MAX_CHARS_TO_ACCUMULATE
+                time_elapsed = time.time() - last_process_time
+                time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
 
-                # Process if:
-                # 1. Normal case: 150+ chars AND paragraph break, OR
-                # 2. Fallback case: 400+ chars (even without paragraph break)
+                # Process if ANY of these conditions are met:
+                # 1. Normal case: 150+ chars AND paragraph break
+                # 2. Fallback case 1: 400+ chars (even without paragraph break)
+                # 3. Fallback case 2: Time threshold reached (and we have text)
                 should_process = (
                     accumulated_done and
-                    ((has_min_chars and has_paragraph_break) or has_max_chars)
+                    ((has_min_chars and has_paragraph_break) or
+                     has_max_chars or
+                     time_threshold_reached)
                 )
 
                 if should_process:
@@ -433,7 +443,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         to_process = '\n\n'.join(parts[:-1])
                         accumulated_done = parts[-1]
                     else:
-                        # No paragraph break - process everything (hit max threshold)
+                        # No paragraph break - process everything (hit max threshold or time)
                         to_process = accumulated_done
                         accumulated_done = ""
 
@@ -445,6 +455,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             print(f"AI Error: {ai_error}", flush=True)
                         # Add paragraph break only if we split on one
                         new_processed = processed + ('\n\n' if has_paragraph_break else ' ')
+                        last_process_time = time.time()  # Reset timer after processing
 
                 # IMPORTANT: Do NOT send provisional text (curr_tgt)
                 # Only send finalized chunks to avoid showing partial AI responses

@@ -7,6 +7,7 @@ import tkinter.ttk as ttk
 
 import core
 from cmque import PairDeque, Queue
+from settings import Settings
 
 
 class Text(tk.Text):
@@ -68,6 +69,9 @@ class App(tk.Tk):
         super().__init__()
         self.title("Whispering")
         self.autotype_enabled = False  # Track autotype state
+
+        # Load settings
+        self.settings = Settings()
 
         # Try to load AI configuration
         self.ai_config = None
@@ -175,6 +179,14 @@ class App(tk.Tk):
         if not self.ai_available:
             self.ai_model_combo.state(("disabled",))
 
+        # AI Processing Interval
+        self.ai_interval_label = ttk.Label(self.bot_frame, text="Interval (min):")
+        interval_values = [str(i) for i in range(1, 11)]  # 1-10 minutes
+        self.ai_interval_combo = ttk.Combobox(self.bot_frame, values=interval_values, state="readonly", width=5)
+        self.ai_interval_combo.current(1)  # Default to 2 minutes
+        if not self.ai_available:
+            self.ai_interval_combo.state(("disabled",))
+
         self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
 
         self.source_label.pack(side="left", padx=(5, 5))
@@ -186,6 +198,8 @@ class App(tk.Tk):
         self.ai_mode_combo.pack(side="left", padx=(0, 5))
         self.ai_model_label.pack(side="left", padx=(5, 2))
         self.ai_model_combo.pack(side="left", padx=(0, 5))
+        self.ai_interval_label.pack(side="left", padx=(5, 2))
+        self.ai_interval_combo.pack(side="left", padx=(0, 5))
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
@@ -311,7 +325,10 @@ class App(tk.Tk):
                 print(f"Failed to initialize AI processor: {e}")
                 ai_processor = None
 
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor}, daemon=True).start()
+        # Get AI processing interval
+        ai_process_interval = int(self.ai_interval_combo.get()) if self.ai_available else 2
+
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval}, daemon=True).start()
         self.starting()
         self.update_level()
 
