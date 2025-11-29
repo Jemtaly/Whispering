@@ -119,10 +119,11 @@ class App(tk.Tk):
         self.text_visible = self.settings.get("text_visible", True)
 
         # Set minimum window size - will adjust based on mode
+        # Increased height by 20% (600 -> 720)
         if self.text_visible:
-            self.minsize(900, 600)  # Full mode
+            self.minsize(900, 720)  # Full mode
         else:
-            self.minsize(380, 600)  # Minimal mode
+            self.minsize(380, 720)  # Minimal mode
 
         # Try to load AI configuration
         self.ai_config = None
@@ -654,15 +655,33 @@ class App(tk.Tk):
             self.text_frame.grid_remove()
             self.hide_text_button.config(text="Show Text ▶")
             self.text_visible = False
+
+            # Reconfigure grid: controls column expands to fill window
+            self.columnconfigure(0, weight=1, minsize=350)
+            self.columnconfigure(1, weight=0)  # Text column won't expand
+
             # Adjust minimum size for minimal mode (narrow column)
-            self.minsize(380, 600)
+            self.minsize(380, 720)
+
+            # Optionally resize window to minimal width
+            current_height = self.winfo_height()
+            self.geometry(f"380x{current_height}")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
             self.hide_text_button.config(text="Hide Text ◀")
             self.text_visible = True
+
+            # Reconfigure grid: restore original layout
+            self.columnconfigure(0, weight=0, minsize=350)  # Controls fixed
+            self.columnconfigure(1, weight=1)  # Text column expands
+
             # Restore minimum size for full mode (two columns)
-            self.minsize(900, 600)
+            self.minsize(900, 720)
+
+            # Optionally resize window to show both columns
+            current_height = self.winfo_height()
+            self.geometry(f"900x{current_height}")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
