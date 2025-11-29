@@ -63,6 +63,9 @@ recordings/
 # TTS output files
 tts_output/
 
+# Log output files
+log_output/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

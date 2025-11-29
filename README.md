@@ -7,6 +7,7 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **Real-time transcription** with iterative refinement for accuracy
 - **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
 - **Text-to-Speech (TTS)** - convert transcribed text back to audio with voice cloning support
+- **Transcript logging** - automatic session-based logging to timestamped files in `log_output/`
 - **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
 - **Editable transcript** - manually edit text and add paragraph breaks
@@ -20,6 +21,7 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
 - **Helpful tooltips** on all major controls
+- **Organized project structure** - clean separation of source, config, scripts, and logs
 
 ## AI Features (Optional)
 
@@ -87,13 +89,15 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 Use the launcher script (recommended for CUDA support):
 
 ```bash
-./run.sh
+./scripts/run.sh
 ```
 
 Or run directly:
 
 ```bash
-python gui.py
+# Make sure to set PYTHONPATH
+export PYTHONPATH="$PWD/src:$PYTHONPATH"
+python src/gui.py
 ```
 
 **GUI Layout:**
@@ -139,7 +143,7 @@ The GUI uses a two-column layout:
 ### TUI
 
 ```bash
-python tui.py [options]
+python src/tui.py [options]
 ```
 
 **Options:**
@@ -161,20 +165,60 @@ python tui.py [options]
 | `--para-min-pause` | 0.8 | Minimum pause to consider (seconds) |
 | `--para-max-chars` | 500 | Max characters per paragraph |
 | `--para-max-words` | 100 | Max words per paragraph |
+| `--no-log` | off | Disable transcript logging to `log_output/` |
 
 **Example:**
 
 ```bash
 # Transcribe English, translate to Spanish, using GPU
-python tui.py --source en --target es --device cuda
+python src/tui.py --source en --target es --device cuda
 
 # Use specific microphone
-python tui.py --mic "Webcam"
+python src/tui.py --mic "Webcam"
+
+# Disable logging
+python src/tui.py --no-log
 ```
 
 **TUI Controls:**
 - `Space` - Start/Stop transcription
+- `L` - List recent log files
 - `Q` - Quit
+
+## Transcript Logging
+
+Transcriptions are automatically saved to timestamped log files in `log_output/`:
+
+**Log File Format:**
+- Filename: `transcript_YYYYMMDD_HHMMSS.txt`
+- Each entry includes timestamp
+- Session metadata (start/end times, duration)
+- Preserved paragraph breaks
+
+**Features:**
+- Automatic session management (one file per start/stop cycle)
+- Timestamped entries for reference
+- Clean, readable format
+- Press `L` in TUI to view recent logs
+- Logs are gitignored for privacy
+
+**Example Log:**
+```
+Whispering Transcript Log
+==================================================
+Session started: 2025-11-29 14:30:15
+==================================================
+
+[14:30:20] This is the first transcribed sentence.
+[14:30:25] Here's another line with proper formatting.
+
+[14:30:30] Paragraph breaks are preserved.
+
+==================================================
+Session ended: 2025-11-29 14:32:45
+Duration: 0:02:30
+==================================================
+```
 
 ## Audio Device Selection
 
