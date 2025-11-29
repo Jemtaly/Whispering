@@ -399,6 +399,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
+        MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -409,21 +410,32 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 if done_src:
                     accumulated_done += done_src
 
-                # Only process when we have enough text AND a paragraph break
-                # This accumulates more context and reduces API calls
+                # Determine if we should process accumulated text
+                # Multiple conditions - any one triggers processing:
                 new_processed = ""
+                has_paragraph_break = '\n\n' in accumulated_done
+                has_min_chars = len(accumulated_done) >= MIN_CHARS_TO_PROCESS
+                has_max_chars = len(accumulated_done) >= MAX_CHARS_TO_ACCUMULATE
+
+                # Process if:
+                # 1. Normal case: 150+ chars AND paragraph break, OR
+                # 2. Fallback case: 400+ chars (even without paragraph break)
                 should_process = (
                     accumulated_done and
-                    '\n\n' in accumulated_done and
-                    len(accumulated_done) >= MIN_CHARS_TO_PROCESS
+                    ((has_min_chars and has_paragraph_break) or has_max_chars)
                 )
 
                 if should_process:
-                    # Split on paragraph breaks
-                    parts = accumulated_done.split('\n\n')
-                    # Keep last part (incomplete paragraph) in accumulated_done
-                    to_process = '\n\n'.join(parts[:-1])
-                    accumulated_done = parts[-1]
+                    if has_paragraph_break:
+                        # Split on paragraph breaks
+                        parts = accumulated_done.split('\n\n')
+                        # Keep last part (incomplete paragraph) in accumulated_done
+                        to_process = '\n\n'.join(parts[:-1])
+                        accumulated_done = parts[-1]
+                    else:
+                        # No paragraph break - process everything (hit max threshold)
+                        to_process = accumulated_done
+                        accumulated_done = ""
 
                     if to_process:
                         # Process with AI
@@ -431,7 +443,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         if ai_error:
                             # Log error to console but continue with result
                             print(f"AI Error: {ai_error}", flush=True)
-                        new_processed = processed + '\n\n'  # Add back paragraph break
+                        # Add paragraph break only if we split on one
+                        new_processed = processed + ('\n\n' if has_paragraph_break else ' ')
 
                 # IMPORTANT: Do NOT send provisional text (curr_tgt)
                 # Only send finalized chunks to avoid showing partial AI responses

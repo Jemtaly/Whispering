@@ -141,5 +141,6 @@ defaults:
   mode: "proofread_translate"
   temperature: 0.1  # Lower = more deterministic, less creative (was 0.3)
   max_retries: 2
-  min_chars_to_process: 150  # Minimum characters before AI processing (accumulates more context)
+  min_chars_to_process: 150  # Minimum characters before AI processing (with paragraph break)
+  max_chars_to_accumulate: 400  # Force processing even without paragraph break (prevents indefinite waiting)
   chunk_size: 500  # Process in chunks for better real-time performance
