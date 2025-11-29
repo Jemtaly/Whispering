@@ -225,12 +225,12 @@ class App(tk.Tk):
 
         # Set minimum window size - will adjust based on mode
         # For minimal mode: calculate based on controls, for full mode add space for text
-        # Minimal mode: ~650px fits all controls with padding
-        # Full mode: ~720px gives more space for text panels
+        # Minimal mode: 400x850 minimum (never go below this)
+        # Full mode: 900x850 gives space for text panels
         if self.text_visible:
-            self.minsize(900, 720)  # Full mode - more vertical space for text
+            self.minsize(900, 850)  # Full mode - more vertical space for text
         else:
-            self.minsize(380, 650)  # Minimal mode - compact height for controls
+            self.minsize(400, 850)  # Minimal mode - never below 400x850
 
         # Try to load AI configuration
         self.ai_config = None
@@ -800,11 +800,11 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)
             self.columnconfigure(1, weight=0)  # Text column won't expand
 
-            # Adjust minimum size for minimal mode (compact height for controls)
-            self.minsize(380, 650)
+            # Adjust minimum size for minimal mode (never below 400x850)
+            self.minsize(400, 850)
 
-            # Resize window to minimal width and compact height
-            self.geometry("380x650")
+            # Resize window to minimal width
+            self.geometry("400x850")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
@@ -815,11 +815,11 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=0, minsize=350)  # Controls fixed
             self.columnconfigure(1, weight=1)  # Text column expands
 
-            # Restore minimum size for full mode (more height for text panels)
-            self.minsize(900, 720)
+            # Restore minimum size for full mode
+            self.minsize(900, 850)
 
-            # Resize window to show both columns with more height
-            self.geometry("900x720")
+            # Resize window to show both columns
+            self.geometry("900x850")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
