@@ -1,20 +1,27 @@
 setuptools
 requests
 wheel
+numpy>=2.0.0
 faster-whisper
 sounddevice
-numpy
 
 # AI Processing dependencies
 PyYAML>=6.0
 python-dotenv>=1.0.0
 
-# TTS dependencies
-chatterbox-tts
+# TTS dependencies (individual components to avoid pkuseg conflict)
+# After installing these, run: pip install chatterbox-tts --no-deps
 torch>=2.0.0
 torchaudio>=2.0.0
 soundfile>=0.12.0
+librosa>=0.11.0
+s3tokenizer
+safetensors>=0.5.3
+transformers>=4.46.0
+diffusers>=0.29.0
+omegaconf>=2.3.0
+resemble-perth>=1.0.1
+conformer>=0.3.2
 
-# Optional: for auto-type feature (Windows/macOS/Linux X11)
-# Linux Wayland users should install wtype or ydotool instead
+# Optional: for auto-type feature
 pyautogui

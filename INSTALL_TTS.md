@@ -1,19 +1,25 @@
 # TTS Installation Guide
 
-## Option 1: Install chatterbox-tts without deps (Recommended)
+## Standard Installation (Recommended)
+
+This is the correct installation process to avoid the pkuseg dependency conflict:
 
 ```bash
-# Install base dependencies first
+# Step 1: Install all dependencies from requirements.txt
 pip install -r requirements.txt
 
-# Then install chatterbox-tts without its dependencies
+# Step 2: Install chatterbox-tts WITHOUT its dependencies
+# (we already installed the correct versions in step 1)
 pip install chatterbox-tts --no-deps
 
-# Test if it works
-python -c "from chatterbox.tts import ChatterboxTTS; print('✓ Success!')"
+# Step 3: Test if it works
+python -c "from chatterbox.tts import ChatterboxTTS; print('✓ ChatterboxTTS loaded successfully!')"
 ```
 
-If this works, you're done! The pkuseg dependency might only be needed for features you don't use.
+**Why this works:**
+- `requirements.txt` has all the individual components chatterbox needs (torch, transformers, etc.)
+- We install chatterbox-tts with `--no-deps` so it doesn't pull in conflicting versions (like pkuseg)
+- You get full control over dependency versions
 
 ## Option 2: If Option 1 fails - Manual source installation
 
