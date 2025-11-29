@@ -326,7 +326,28 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100):
+def ai_translate(text, ai_processor):
+    """
+    Translate/process text using AI provider.
+
+    Args:
+        text: Text to process
+        ai_processor: AITextProcessor instance
+
+    Returns:
+        (processed_text, error_message) tuple
+    """
+    if not text or not text.strip():
+        return ("", None)
+
+    try:
+        result, error = ai_processor.process(text)
+        return (result, error)
+    except Exception as e:
+        return (text, f"AI processing error: {str(e)}")
+
+
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time"):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -375,20 +396,97 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         tsres_queue.put(None)
 
     def tl_proc():
+        import time
+
         rsrv_src = ""
+        accumulated_done = ""  # Accumulate done text before processing
+        last_process_time = time.time()  # Track when we last processed
+
+        MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
+        MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
+        PROCESS_INTERVAL_SECONDS = ai_process_interval * 60 if ai_trigger_mode == "time" else float('inf')
+        PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
+
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
-            if done_src or rsrv_src:
-                done_src = rsrv_src + done_src
-                done_snt = translate(done_src, source, target, timeout)
-                rsrv_src = done_snt.pop()[0]
-                done_tgt = "".join(t for s, t in done_snt)
+
+            # Use AI processing if available
+            if ai_processor:
+                # Accumulate done text
+                if done_src:
+                    accumulated_done += done_src
+
+                # Determine if we should process accumulated text
+                # Multiple conditions - any one triggers processing:
+                has_paragraph_break = '\n\n' in accumulated_done
+                has_min_chars = len(accumulated_done) >= MIN_CHARS_TO_PROCESS
+                has_max_chars = len(accumulated_done) >= MAX_CHARS_TO_ACCUMULATE
+
+                # Time-based trigger (only active when trigger_mode == "time")
+                time_elapsed = time.time() - last_process_time
+                time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
+
+                # Word count trigger (only active when trigger_mode == "words")
+                word_count = len(accumulated_done.split()) if accumulated_done else 0
+                word_threshold_reached = word_count >= PROCESS_WORD_COUNT
+
+                # Process if ANY of these conditions are met:
+                # 1. Normal case: 150+ chars AND paragraph break
+                # 2. Fallback case 1: 400+ chars (even without paragraph break)
+                # 3. Fallback case 2: Time threshold reached (when in time mode)
+                # 4. Fallback case 3: Word count threshold reached (when in words mode)
+                should_process = (
+                    accumulated_done and
+                    ((has_min_chars and has_paragraph_break) or
+                     has_max_chars or
+                     time_threshold_reached or
+                     word_threshold_reached)
+                )
+
+                if should_process:
+                    if has_paragraph_break:
+                        # Split on paragraph breaks
+                        parts = accumulated_done.split('\n\n')
+                        # Keep last part (incomplete paragraph) in accumulated_done
+                        to_process = '\n\n'.join(parts[:-1])
+                        accumulated_done = parts[-1]
+                    else:
+                        # No paragraph break - process everything (hit max threshold or time/words)
+                        to_process = accumulated_done
+                        accumulated_done = ""
+
+                    if to_process:
+                        # Process with AI
+                        processed, ai_error = ai_translate(to_process, ai_processor)
+                        if ai_error:
+                            # Log error to console but continue with result
+                            print(f"AI Error: {ai_error}", flush=True)
+
+                        # Determine separator based on context
+                        separator = '\n\n' if has_paragraph_break else ' '
+                        last_process_time = time.time()  # Reset timer after processing
+
+                        # Send the NEW processed chunk - ONLY send when we have processed text
+                        tlres_queue.put((processed + separator, ""))
             else:
-                done_tgt = ""
-            curr_src = rsrv_src + curr_src
-            curr_snt = translate(curr_src, source, target, timeout)
-            curr_tgt = "".join(t for s, t in curr_snt)
-            tlres_queue.put((done_tgt, curr_tgt))
+                # Use original Google Translate
+                if done_src or rsrv_src:
+                    done_src = rsrv_src + done_src
+                    done_snt = translate(done_src, source, target, timeout)
+                    rsrv_src = done_snt.pop()[0]
+                    done_tgt = "".join(t for s, t in done_snt)
+                else:
+                    done_tgt = ""
+                curr_src = rsrv_src + curr_src
+                curr_snt = translate(curr_src, source, target, timeout)
+                curr_tgt = "".join(t for s, t in curr_snt)
+                tlres_queue.put((done_tgt, curr_tgt))
+
+        # Process any remaining accumulated text on exit
+        if ai_processor and accumulated_done and accumulated_done.strip():
+            final_tgt, _ = ai_translate(accumulated_done, ai_processor)
+            tlres_queue.put((final_tgt, ""))
+
         tlres_queue.put(None)
 
     try:

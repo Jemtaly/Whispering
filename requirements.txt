@@ -5,6 +5,10 @@ faster-whisper
 sounddevice
 numpy
 
+# AI Processing dependencies
+PyYAML>=6.0
+python-dotenv>=1.0.0
+
 # Optional: for auto-type feature (Windows/macOS/Linux X11)
 # Linux Wayland users should install wtype or ydotool instead
 pyautogui
