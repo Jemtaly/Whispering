@@ -398,7 +398,6 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
     def tl_proc():
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
-        processed_done = ""  # Track all processed text to prevent vanishing
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
 
         while ts2tl := ts2tl_queue.get():
@@ -433,17 +432,11 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             # Log error to console but continue with result
                             print(f"AI Error: {ai_error}", flush=True)
                         new_processed = processed + '\n\n'  # Add back paragraph break
-                        processed_done += new_processed  # Accumulate ALL processed text
 
-                # Process current (provisional) text with accumulated
-                curr_to_process = accumulated_done + curr_src if accumulated_done else curr_src
-                if curr_to_process and curr_to_process.strip():
-                    curr_tgt, _ = ai_translate(curr_to_process, ai_processor)
-                else:
-                    curr_tgt = ""
-
-                # Send cumulative processed text (not just new) to prevent vanishing
-                tlres_queue.put((new_processed, curr_tgt))
+                # IMPORTANT: Do NOT send provisional text (curr_tgt)
+                # Only send finalized chunks to avoid showing partial AI responses
+                # Right pane stays empty until chunk is complete and processed
+                tlres_queue.put((new_processed, ""))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:
