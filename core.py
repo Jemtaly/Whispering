@@ -397,7 +397,9 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
     def tl_proc():
         rsrv_src = ""
-        accumulated_done = ""  # Accumulate done text for paragraph-based processing
+        accumulated_done = ""  # Accumulate done text before processing
+        processed_done = ""  # Track all processed text to prevent vanishing
+        MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -408,10 +410,16 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 if done_src:
                     accumulated_done += done_src
 
-                # Process accumulated text only when we have paragraph breaks
-                # This reduces API calls and improves context
-                done_tgt = ""
-                if accumulated_done and '\n\n' in accumulated_done:
+                # Only process when we have enough text AND a paragraph break
+                # This accumulates more context and reduces API calls
+                new_processed = ""
+                should_process = (
+                    accumulated_done and
+                    '\n\n' in accumulated_done and
+                    len(accumulated_done) >= MIN_CHARS_TO_PROCESS
+                )
+
+                if should_process:
                     # Split on paragraph breaks
                     parts = accumulated_done.split('\n\n')
                     # Keep last part (incomplete paragraph) in accumulated_done
@@ -424,7 +432,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         if ai_error:
                             # Log error to console but continue with result
                             print(f"AI Error: {ai_error}", flush=True)
-                        done_tgt = processed + '\n\n'  # Add back paragraph break
+                        new_processed = processed + '\n\n'  # Add back paragraph break
+                        processed_done += new_processed  # Accumulate ALL processed text
 
                 # Process current (provisional) text with accumulated
                 curr_to_process = accumulated_done + curr_src if accumulated_done else curr_src
@@ -433,7 +442,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 else:
                     curr_tgt = ""
 
-                tlres_queue.put((done_tgt, curr_tgt))
+                # Send cumulative processed text (not just new) to prevent vanishing
+                tlres_queue.put((new_processed, curr_tgt))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:

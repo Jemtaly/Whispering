@@ -144,9 +144,26 @@ Formatted, Corrected Text/Translation
 ```
 
 **Key Benefits**:
-- ⏱️ **Paragraph-based processing**: Processes complete paragraphs for better context
-- 🎯 **Intelligent batching**: Reduces API calls while maintaining responsiveness
-- 🔄 **Real-time preview**: See provisional text while paragraph is being spoken
+- ⏱️ **Smart accumulation**: Waits for 150+ characters AND paragraph break before processing
+- 🎯 **Intelligent batching**: Reduces API calls while gathering more context
+- 🔄 **Real-time preview**: See provisional text immediately, processed text appears after accumulation
+- 💰 **Cost efficient**: Fewer API calls with better context = better quality + lower cost
+
+**How Text Accumulation Works**:
+1. You speak continuously
+2. Text appears immediately in the left pane (Whisper transcription)
+3. Right pane shows provisional AI processing in real-time (blue/underlined)
+4. When you reach 150+ characters AND pause for a paragraph break:
+   - Accumulated text is sent to AI for processing
+   - Processed text appears in right pane (black/finalized)
+5. Continue speaking - the cycle repeats
+
+**Adjusting Accumulation**:
+Edit `ai_config.yaml` to change the threshold:
+```yaml
+defaults:
+  min_chars_to_process: 150  # Increase for more context, decrease for faster processing
+```
 
 ## Available Models
 
