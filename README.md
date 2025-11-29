@@ -5,7 +5,8 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 ## Features
 
 - **Real-time transcription** with iterative refinement for accuracy
-- **Live translation** to 100+ languages via Google Translate
+- **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
+- **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps
 - **Editable transcript** - manually edit text and add paragraph breaks
 - **GPU acceleration** with CUDA support for fast inference
@@ -13,6 +14,18 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **Audio level meter** to verify microphone input
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
+
+## AI Features (Optional)
+
+Whispering now includes powerful AI-powered text processing capabilities:
+
+- **Intelligent Proofreading** - Fix spelling, grammar, and punctuation errors in real-time
+- **Context-Aware Translation** - Better translations that understand speech patterns
+- **Multiple AI Models** - Choose from Claude, GPT-4, Gemini, Llama, and more via OpenRouter
+- **Smart Text Processing** - Configurable triggers (time-based or word count-based)
+- **Processing Modes** - Proofread only, translate only, or combined processing
+
+See [AI_SETUP.md](AI_SETUP.md) for complete setup instructions and configuration options.
 
 ## Requirements
 
@@ -44,6 +57,8 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 - [sounddevice](https://python-sounddevice.readthedocs.io/) - Cross-platform audio I/O
 - [numpy](https://numpy.org/) - Array processing
 - [requests](https://requests.readthedocs.io/) - HTTP client for translation API
+- [PyYAML](https://pyyaml.org/) - Configuration file parsing for AI features
+- [python-dotenv](https://pypi.org/project/python-dotenv/) - Environment variable management for API keys
 - [pyautogui](https://pyautogui.readthedocs.io/) - Optional, for auto-type feature (Windows/macOS/Linux X11)
 
 ## Usage
@@ -275,6 +290,12 @@ Whispering/
 ├── core.py          # Core transcription/translation logic
 ├── cmque.py         # Thread-safe queue utilities
 ├── autotype.py      # Cross-platform typing utility
+├── ai_provider.py   # OpenRouter AI integration
+├── ai_config.py     # AI configuration loader
+├── ai_config.yaml   # AI models and prompts configuration
+├── settings.py      # Settings persistence framework
+├── .env.example     # Example environment variables template
+├── AI_SETUP.md      # AI features setup guide
 ├── run.sh           # Launcher script (sets CUDA paths)
 ├── debug_audio.py   # Audio device diagnostics
 └── requirements.txt # Python dependencies
