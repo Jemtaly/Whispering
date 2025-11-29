@@ -29,8 +29,9 @@ cd Whispering
 - **Audio level meter** to verify microphone input
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
-- **Helpful tooltips** on all major controls
+- **Contextual help dialogs** - clickable "?" buttons with compact, easy-to-read help
 - **Organized project structure** - clean separation of source, config, scripts, and logs
+- **Graceful exit** - clean shutdown on Ctrl+C without error traces
 
 ## AI Features (Optional)
 
@@ -145,6 +146,10 @@ The GUI uses a two-column layout:
 **Main Controls:**
 - **Mic** - Select input device (system default uses PipeWire/PulseAudio), with refresh button
 - **Hide Text ◀** - Toggle minimal mode (hides text windows, state is saved)
+
+**Help Buttons:**
+- Click **?** next to section headers for context-sensitive help
+- Click again or click outside to close help dialogs
 
 **Model Section:**
 - **Model** - Whisper model size (default: large-v3) with VRAM estimate displayed below
@@ -275,7 +280,7 @@ The application intelligently selects audio devices:
 Run the debug script to check available devices:
 
 ```bash
-python debug_audio.py
+python src/debug_audio.py
 ```
 
 This will show:
@@ -389,13 +394,13 @@ Both text windows (Whisper Output and Translated/Proofread Output) are fully edi
 **Check your setup:**
 
 ```bash
-python autotype.py --check
+python src/autotype.py --check
 ```
 
 **Test auto-typing:**
 
 ```bash
-python autotype.py --test "Hello, world!"
+python src/autotype.py --test "Hello, world!"
 # Click on target window within 3 seconds
 ```
 
@@ -417,21 +422,44 @@ If you have CUDA 13 installed system-wide, the pip packages provide CUDA 12 libr
 
 ```
 Whispering/
-├── gui.py           # GUI application (Tkinter)
-├── tui.py           # TUI application (curses)
-├── core.py          # Core transcription/translation logic
-├── cmque.py         # Thread-safe queue utilities
-├── autotype.py      # Cross-platform typing utility
-├── ai_provider.py   # OpenRouter AI integration
-├── ai_config.py     # AI configuration loader
-├── ai_config.yaml   # AI models and prompts configuration
-├── settings.py      # Settings persistence framework
-├── .env.example     # Example environment variables template
-├── AI_SETUP.md      # AI features setup guide
-├── run.sh           # Launcher script (sets CUDA paths)
-├── debug_audio.py   # Audio device diagnostics
-└── requirements.txt # Python dependencies
+├── src/                    # Source code
+│   ├── gui.py              # GUI application (Tkinter)
+│   ├── tui.py              # TUI application (curses)
+│   ├── core.py             # Core transcription/translation logic
+│   ├── cmque.py            # Thread-safe queue utilities
+│   ├── autotype.py         # Cross-platform typing utility
+│   ├── ai_provider.py      # OpenRouter AI integration
+│   ├── ai_config.py        # AI configuration loader
+│   ├── settings.py         # Settings persistence framework
+│   ├── transcript_logger.py # Transcript logging to files
+│   ├── tts_controller.py   # Text-to-speech controller
+│   ├── tts_provider.py     # TTS provider interface
+│   ├── debug_audio.py      # Audio device diagnostics
+│   └── debug_cuda.py       # CUDA debugging utility
+│
+├── config/                 # Configuration files
+│   ├── ai_config.yaml      # AI models and prompts configuration
+│   └── .env.example        # Example environment variables template
+│
+├── scripts/                # Shell scripts
+│   ├── install.sh          # Installation script
+│   ├── run.sh              # Launcher script (sets CUDA paths)
+│   └── debug_env.sh        # Environment debugging
+│
+├── log_output/             # Transcript log files (gitignored)
+│   └── transcript_*.txt    # Auto-generated session logs
+│
+├── tts_output/             # TTS audio files (gitignored)
+│
+├── requirements.txt        # Python dependencies
+├── README.md               # This file
+├── AI_SETUP.md             # AI features setup guide
+├── INSTALL_TTS.md          # TTS installation guide
+├── STRUCTURE.md            # Detailed project structure docs
+└── .gitignore              # Git ignore rules
 ```
+
+See [STRUCTURE.md](STRUCTURE.md) for detailed documentation on the project organization.
 
 ## Extending
 
@@ -451,13 +479,13 @@ To use a different translation service, modify the `translate()` function in `co
 
 **Audio device crashes or hangs**
 - Use the `pipewire` or `pulse` virtual device instead of direct hardware
-- Run `debug_audio.py` to identify stable devices
+- Run `python src/debug_audio.py` to identify stable devices
 - Avoid JACK devices (known stability issues)
 
 **No audio level shown**
 - Check that the correct microphone is selected
 - Verify microphone isn't muted in system settings
-- Run `debug_audio.py` to test recording
+- Run `python src/debug_audio.py` to test recording
 
 **Slow transcription**
 - Use a smaller model (base, small) instead of large-v3
@@ -465,11 +493,11 @@ To use a different translation service, modify the `translate()` function in `co
 - Reduce the `memory` parameter
 
 **Auto-type not working**
-- Run `python autotype.py --check` to see available backends
+- Run `python src/autotype.py --check` to see available backends
 - Linux X11: Install xdotool and xclip: `sudo apt install xdotool xclip`
 - Linux Wayland: Install wtype: `sudo apt install wtype wl-clipboard`
 - Windows/macOS: Install pyautogui: `pip install pyautogui`
-- Test with: `python autotype.py --test "Hello"`
+- Test with: `python src/autotype.py --test "Hello"`
 
 ## License
 
