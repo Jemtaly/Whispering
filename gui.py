@@ -520,19 +520,34 @@ class App(tk.Tk):
 
         # Check if we should save to file
         save_to_file = "selected" in self.tts_save_check.state()
-        file_format = self.tts_format_combo.get()
 
         if save_to_file:
             # Generate unique filename with timestamp
             import time
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             filename = f"tts_{timestamp}"
+            file_format = self.tts_format_combo.get()
 
-            # Synthesize in background thread
+            # Synthesize and save to file in background thread
             self.tts_controller.synthesize_to_file(
                 text=text,
                 output_filename=filename,
                 file_format=file_format,
+                async_mode=True
+            )
+        else:
+            # Just synthesize for playback (don't save)
+            # For now, we still save to temp file since we don't have audio playback yet
+            # TODO: Add audio playback functionality
+            import time
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"tts_temp_{timestamp}"
+
+            # Still save for now (future: add sounddevice playback)
+            self.tts_controller.synthesize_to_file(
+                text=text,
+                output_filename=filename,
+                file_format="wav",
                 async_mode=True
             )
 
