@@ -7,13 +7,18 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **Real-time transcription** with iterative refinement for accuracy
 - **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
 - **Live translation** to 100+ languages via Google Translate or AI models
-- **Auto-type to any app** - dictate directly into browsers, editors, chat apps
+- **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
 - **Editable transcript** - manually edit text and add paragraph breaks
+- **Two-column GUI layout** - organized controls with labeled output windows
+- **Minimal mode** - hide text displays for compact interface
+- **Settings persistence** - remember preferences including window layout
 - **GPU acceleration** with CUDA support for fast inference
+- **VRAM estimates** - see memory requirements for each model
 - **Adaptive paragraph detection** based on speech pause patterns
 - **Audio level meter** to verify microphone input
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
+- **Helpful tooltips** on all major controls
 
 ## AI Features (Optional)
 
@@ -77,19 +82,45 @@ Or run directly:
 python gui.py
 ```
 
-**GUI Controls:**
-- **Mic** - Select input device (system default uses PipeWire/PulseAudio)
-- **Model** - Whisper model size (default: large-v3)
+**GUI Layout:**
+
+The GUI uses a two-column layout:
+- **Left column** - All controls organized into logical sections
+- **Right column** - Two labeled text windows (Whisper Output / Translated or Proofread Output)
+
+**Main Controls:**
+- **Mic** - Select input device (system default uses PipeWire/PulseAudio), with refresh button
+- **Hide Text ◀** - Toggle minimal mode (hides text windows, state is saved)
+
+**Model Section:**
+- **Model** - Whisper model size (default: large-v3) with VRAM estimate displayed below
 - **VAD** - Voice Activity Detection filter
 - **¶** - Adaptive paragraph detection (inserts line breaks based on pauses)
-- **⌨** - Auto-type: paste transcribed text into focused window
-- **Device** - Inference device: cpu, cuda, or auto
-- **Memory** - Number of previous segments used as context
-- **Patience** - Seconds to wait before finalizing a segment
-- **Timeout** - Translation service timeout
-- **Source** - Source language (auto-detect if not set)
-- **Target** - Target language (no translation if set to "none")
+- **⌨** - Auto-type: paste transcribed text into focused window with cursor positioning
+- **Dev** - Inference device: cpu, cuda, or auto
+- **Mem** - Number of previous segments used as context (1-10)
+- **Pat** - Patience: seconds to wait before finalizing a segment
+- **Time** - Translation service timeout in seconds
+
+**Translate/Proofread Section:**
+- **Src** - Source language (auto-detect if not set)
+- **Tgt** - Target language (no translation if set to "none")
+
+**AI Processing Section** (when AI is available):
+- **Enable AI** - Turn on AI-powered proofreading/translation
+- **Mode** - Proofread, Translate, or Proofread+Translate
+- **Model** - Select AI model (Claude, GPT-4, Gemini, etc.)
+- **Trigger** - Time-based (minutes) or word count-based processing
+- **Prompt** - Optional initial prompt for transcription
+
+**Status & Controls:**
+- **Start/Stop** - Control button for transcription
 - **Level** - Real-time audio input level meter
+- **Status** - Error messages and AI status
+
+**Text Windows** (can be hidden with "Hide Text ◀"):
+- **Whisper Output** - Raw transcription with editable text
+- **Translated/Proofread Output** - Processed output (translation or AI-enhanced text)
 
 ### TUI
 
@@ -214,6 +245,12 @@ The auto-type feature (⌨ checkbox) types transcribed text directly into the cu
 2. Click on the target window (browser, Discord, VS Code, etc.) to focus it
 3. Speak into your microphone
 4. Text appears in the focused window as it's transcribed
+5. The cursor is automatically moved to the end of the text before pasting (Ctrl+End on Linux/Windows, Cmd+Down on macOS)
+
+**Key features:**
+- **Cursor positioning** - Automatically moves to end of text field before pasting
+- **Clipboard-based** - Uses system clipboard + paste shortcut for maximum compatibility
+- **Cross-platform** - Works on Windows, macOS, Linux X11, and Linux Wayland
 
 **Platform support:**
 
@@ -248,11 +285,12 @@ sudo usermod -aG input $USER  # then re-login
 
 **Editing the transcript:**
 
-The left text window is now editable! You can:
+Both text windows (Whisper Output and Translated/Proofread Output) are fully editable! You can:
 - Click anywhere to place cursor and edit text
 - Press Enter to add manual paragraph breaks
 - Select and delete text
-- Copy/paste within the window
+- Copy/paste within the windows
+- Make corrections to transcription or translation in real-time
 
 **Check your setup:**
 
