@@ -32,7 +32,8 @@ class Settings:
             "ai_model_index": 0,
             "ai_process_interval": 2,  # Minutes between AI processing
             "ai_trigger_mode": "time",  # "time" or "words"
-            "ai_process_words": 150  # Words per processing batch
+            "ai_process_words": 150,  # Words per processing batch
+            "text_visible": True  # Text windows visible by default
         }
         self.settings = self.load()
 

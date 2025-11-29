@@ -110,13 +110,18 @@ class App(tk.Tk):
         super().__init__()
         self.title("Whispering")
         self.autotype_enabled = False  # Track autotype state
-        self.text_visible = True  # Track text display visibility
+
+        # Load settings first
+        self.settings = Settings()
+
+        # Load text visibility state from settings (default: True)
+        self.text_visible = self.settings.get("text_visible", True)
 
         # Set minimum window size - will adjust based on mode
-        self.minsize(900, 600)  # Wide for two-column layout
-
-        # Load settings
-        self.settings = Settings()
+        if self.text_visible:
+            self.minsize(900, 600)  # Full mode
+        else:
+            self.minsize(380, 600)  # Minimal mode
 
         # Try to load AI configuration
         self.ai_config = None
@@ -400,6 +405,12 @@ class App(tk.Tk):
         self.level = [0]
         self.autotype_error_shown = False
 
+        # Apply loaded text visibility state
+        if not self.text_visible:
+            # Hide text frame and update button for minimal mode
+            self.text_frame.grid_remove()
+            self.hide_text_button.config(text="Show Text ▶")
+
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
         if self.autotype_enabled and text:
@@ -474,6 +485,10 @@ class App(tk.Tk):
             self.text_visible = True
             # Restore minimum size for full mode (two columns)
             self.minsize(900, 600)
+
+        # Save state to settings
+        self.settings.set("text_visible", self.text_visible)
+        self.settings.save()
 
     def refresh_mics(self):
         current = self.mic_combo.get()
