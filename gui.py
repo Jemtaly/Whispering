@@ -33,14 +33,14 @@ class Text(tk.Text):
                 if len(done) > len(self.prev_done):
                     new_text = done[len(self.prev_done):]
                 self.prev_done = done
-                
+
                 # Update display
                 self.delete(self.record, "end")
                 self.insert("end", done, "done")
                 self.record = self.index("end-1c")
                 self.insert("end", curr, "curr")
                 self.see("end")
-                
+
                 # Fire callback with only NEW text
                 if new_text and self.on_new_text:
                     self.on_new_text(new_text)
@@ -55,7 +55,7 @@ class Text(tk.Text):
                 self.prev_done = ""  # Reset for next segment
                 self.see("end")
         self.after(100, self.poll)
-    
+
     def clear(self):
         """Clear all text and reset state."""
         self.delete("1.0", "end")
@@ -71,8 +71,8 @@ class App(tk.Tk):
         self.autotype_enabled = False  # Track autotype state
         self.text_visible = True  # Track text display visibility
 
-        # Set minimum window size to prevent controls from disappearing
-        self.minsize(800, 200)  # Minimum width=800px, height=200px
+        # Set minimum window size - will adjust based on mode
+        self.minsize(900, 600)  # Wide for two-column layout
 
         # Load settings
         self.settings = Settings()
@@ -87,86 +87,147 @@ class App(tk.Tk):
         except Exception as e:
             print(f"AI features not available: {e}")
 
+        # Create frames - two column layout
+        self.controls_frame = ttk.Frame(self, padding="5")
         self.ts_text = Text(self, on_new_text=self.on_new_transcription)
         self.tl_text = Text(self)
-        self.top_frame = ttk.Frame(self)
-        self.bot_frame = ttk.Frame(self)
-        self.ts_text.grid(row=1, column=0, sticky="nsew")
+
+        # Grid layout: controls in column 0, text panes in column 1
+        self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        self.ts_text.grid(row=0, column=1, sticky="nsew")
         self.tl_text.grid(row=1, column=1, sticky="nsew")
-        self.top_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
-        self.bot_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
+
+        # Configure grid weights
+        self.columnconfigure(0, weight=0, minsize=350)  # Controls column - fixed width
+        self.columnconfigure(1, weight=1)  # Text column - expandable
+        self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-        self.mic_label = ttk.Label(self.top_frame, text="Mic:")
-        self.mic_list = core.get_mic_names()  # List of (index, name) tuples
+
+        # Row counter for controls_frame
+        row = 0
+
+        # === MIC SECTION ===
+        mic_frame = ttk.Frame(self.controls_frame)
+        mic_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(mic_frame, text="Mic:").pack(side="left", padx=(0, 5))
+        self.mic_list = core.get_mic_names()
         mic_display = ["(system default)"] + [name for idx, name in self.mic_list]
-        self.mic_combo = ttk.Combobox(self.top_frame, values=mic_display, state="readonly", width=40)
+        self.mic_combo = ttk.Combobox(mic_frame, values=mic_display, state="readonly", width=25)
         self.mic_combo.current(0)
-        self.mic_button = ttk.Button(self.top_frame, text="↻", width=2, command=self.refresh_mics)
-        self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
-        self.model_combo = ttk.Combobox(self.top_frame, values=core.models, state="normal")
-        self.model_combo.set("large-v3")  # default to large-v3
-        self.hide_text_button = ttk.Button(self.top_frame, text="Hide Text ▼", width=12, command=self.toggle_text_display)
-        self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
+        self.mic_combo.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.mic_button = ttk.Button(mic_frame, text="↻", width=2, command=self.refresh_mics)
+        self.mic_button.pack(side="left")
+
+        # === TOGGLE BUTTON ===
+        self.hide_text_button = ttk.Button(self.controls_frame, text="Hide Text ◀", command=self.toggle_text_display)
+        self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        # === MODEL SECTION ===
+        model_frame = ttk.Frame(self.controls_frame)
+        model_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(model_frame, text="Model:").pack(side="left", padx=(0, 5))
+        self.model_combo = ttk.Combobox(model_frame, values=core.models, state="normal", width=15)
+        self.model_combo.set("large-v3")
+        self.model_combo.pack(side="left", fill="x", expand=True)
+
+        # === CHECKBOXES ===
+        checks_frame = ttk.Frame(self.controls_frame)
+        checks_frame.grid(row=row, column=0, sticky="w", pady=(0, 5))
+        row += 1
+
+        self.vad_check = ttk.Checkbutton(checks_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
-        self.para_check = ttk.Checkbutton(self.top_frame, text="¶", onvalue=True, offvalue=False)  # Pilcrow symbol for paragraph
-        self.para_check.state(("!alternate", "selected"))  # enabled by default
-        self.type_check = ttk.Checkbutton(self.top_frame, text="⌨", onvalue=True, offvalue=False)  # Keyboard symbol for auto-type
-        self.type_check.state(("!alternate",))  # disabled by default
-        self.device_label = ttk.Label(self.top_frame, text="Device:")
-        self.device_combo = ttk.Combobox(self.top_frame, values=core.devices, state="readonly", width=6)
-        self.device_combo.current(1)  # default to CUDA
-        self.memory_label = ttk.Label(self.top_frame, text="Memory:")
-        self.memory_spin = ttk.Spinbox(self.top_frame, from_=1, to=10, increment=1, state="readonly")
+        self.vad_check.pack(side="left", padx=(0, 10))
+
+        self.para_check = ttk.Checkbutton(checks_frame, text="¶", onvalue=True, offvalue=False)
+        self.para_check.state(("!alternate", "selected"))
+        self.para_check.pack(side="left", padx=(0, 10))
+
+        self.type_check = ttk.Checkbutton(checks_frame, text="⌨", onvalue=True, offvalue=False)
+        self.type_check.state(("!alternate",))
+        self.type_check.pack(side="left")
+
+        # === DEVICE ===
+        device_frame = ttk.Frame(self.controls_frame)
+        device_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(device_frame, text="Device:").pack(side="left", padx=(0, 5))
+        self.device_combo = ttk.Combobox(device_frame, values=core.devices, state="readonly", width=6)
+        self.device_combo.current(1)
+        self.device_combo.pack(side="left")
+
+        # === MEMORY, PATIENCE, TIMEOUT ===
+        params_frame = ttk.Frame(self.controls_frame)
+        params_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(params_frame, text="Mem:").pack(side="left", padx=(0, 2))
+        self.memory_spin = ttk.Spinbox(params_frame, from_=1, to=10, increment=1, state="readonly", width=4)
         self.memory_spin.set(3)
-        self.patience_label = ttk.Label(self.top_frame, text="Patience:")
-        self.patience_spin = ttk.Spinbox(self.top_frame, from_=1.0, to=20.0, increment=0.5, state="readonly")
+        self.memory_spin.pack(side="left", padx=(0, 10))
+
+        ttk.Label(params_frame, text="Pat:").pack(side="left", padx=(0, 2))
+        self.patience_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.patience_spin.set(5.0)
-        self.timeout_label = ttk.Label(self.top_frame, text="Timeout:")
-        self.timeout_spin = ttk.Spinbox(self.top_frame, from_=1.0, to=20.0, increment=0.5, state="readonly")
+        self.patience_spin.pack(side="left", padx=(0, 10))
+
+        ttk.Label(params_frame, text="Timeout:").pack(side="left", padx=(0, 2))
+        self.timeout_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.timeout_spin.set(5.0)
-        self.mic_label.pack(side="left", padx=(5, 5))
-        self.mic_combo.pack(side="left", padx=(0, 5))
-        self.mic_button.pack(side="left", padx=(0, 5))
-        self.hide_text_button.pack(side="left", padx=(5, 5))
-        self.model_label.pack(side="left", padx=(5, 5))
-        self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True)
-        self.vad_check.pack(side="left", padx=(0, 5))
-        self.para_check.pack(side="left", padx=(0, 5))
-        self.type_check.pack(side="left", padx=(0, 5))
-        self.device_label.pack(side="left", padx=(5, 5))
-        self.device_combo.pack(side="left", padx=(0, 5))
-        self.memory_label.pack(side="left", padx=(5, 5))
-        self.memory_spin.pack(side="left", padx=(0, 5))
-        self.patience_label.pack(side="left", padx=(5, 5))
-        self.patience_spin.pack(side="left", padx=(0, 5))
-        self.timeout_label.pack(side="left", padx=(5, 5))
-        self.timeout_spin.pack(side="left", padx=(0, 5))
-        self.source_label = ttk.Label(self.bot_frame, text="Source:")
-        self.source_combo = ttk.Combobox(self.bot_frame, values=["auto"] + core.sources, state="readonly")
+        self.timeout_spin.pack(side="left")
+
+        # === SOURCE & TARGET ===
+        lang_frame = ttk.Frame(self.controls_frame)
+        lang_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(lang_frame, text="Src:").pack(side="left", padx=(0, 2))
+        self.source_combo = ttk.Combobox(lang_frame, values=["auto"] + core.sources, state="readonly", width=5)
         self.source_combo.current(0)
-        self.target_label = ttk.Label(self.bot_frame, text="Target:")
-        self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + core.targets, state="readonly")
+        self.source_combo.pack(side="left", padx=(0, 10))
+
+        ttk.Label(lang_frame, text="Tgt:").pack(side="left", padx=(0, 2))
+        self.target_combo = ttk.Combobox(lang_frame, values=["none"] + core.targets, state="readonly", width=5)
         self.target_combo.current(0)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
-        self.prompt_label = ttk.Label(self.bot_frame, text="Prompt:")
-        self.prompt_entry = ttk.Entry(self.bot_frame, state="normal")
+        self.target_combo.pack(side="left")
 
-        # AI Controls
-        self.ai_check = ttk.Checkbutton(self.bot_frame, text="AI", onvalue=True, offvalue=False)
+        # === AI CONTROLS ===
+        ai_frame = ttk.Frame(self.controls_frame)
+        ai_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.ai_check = ttk.Checkbutton(ai_frame, text="AI", onvalue=True, offvalue=False)
         if self.ai_available:
-            self.ai_check.state(("!alternate",))  # disabled by default, but available
+            self.ai_check.state(("!alternate",))
         else:
             self.ai_check.state(("disabled",))
+        self.ai_check.pack(side="left", padx=(0, 5))
 
-        self.ai_mode_label = ttk.Label(self.bot_frame, text="Mode:")
-        self.ai_mode_combo = ttk.Combobox(self.bot_frame, values=["Proofread", "Translate", "Proofread+Translate"], state="readonly", width=18)
-        self.ai_mode_combo.current(0)  # Default to Proofread only
+        # AI Mode
+        ai_mode_frame = ttk.Frame(self.controls_frame)
+        ai_mode_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(ai_mode_frame, text="Mode:").pack(side="left", padx=(0, 2))
+        self.ai_mode_combo = ttk.Combobox(ai_mode_frame, values=["Proofread", "Translate", "Proofread+Translate"], state="readonly", width=18)
+        self.ai_mode_combo.current(0)
         if not self.ai_available:
             self.ai_mode_combo.state(("disabled",))
+        self.ai_mode_combo.pack(side="left", fill="x", expand=True)
 
-        self.ai_model_label = ttk.Label(self.bot_frame, text="Model:")
+        # AI Model
+        ai_model_frame = ttk.Frame(self.controls_frame)
+        ai_model_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(ai_model_frame, text="Model:").pack(side="left", padx=(0, 2))
         if self.ai_available:
             model_names = [m['name'] for m in self.ai_config.get_models()]
             default_model_id = self.ai_config.get_default_model()
@@ -179,70 +240,76 @@ class App(tk.Tk):
             model_names = []
             default_idx = 0
 
-        self.ai_model_combo = ttk.Combobox(self.bot_frame, values=model_names, state="readonly", width=20)
+        self.ai_model_combo = ttk.Combobox(ai_model_frame, values=model_names, state="readonly", width=15)
         if model_names:
             self.ai_model_combo.current(default_idx)
         if not self.ai_available:
             self.ai_model_combo.state(("disabled",))
+        self.ai_model_combo.pack(side="left", fill="x", expand=True)
 
-        # AI Processing Trigger Mode
-        self.ai_trigger_label = ttk.Label(self.bot_frame, text="Trigger:")
-        self.ai_trigger_combo = ttk.Combobox(self.bot_frame, values=["Time", "Words"], state="readonly", width=7)
-        self.ai_trigger_combo.current(0)  # Default to Time
+        # AI Trigger
+        ai_trigger_frame = ttk.Frame(self.controls_frame)
+        ai_trigger_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(ai_trigger_frame, text="Trigger:").pack(side="left", padx=(0, 2))
+        self.ai_trigger_combo = ttk.Combobox(ai_trigger_frame, values=["Time", "Words"], state="readonly", width=7)
+        self.ai_trigger_combo.current(0)
         self.ai_trigger_combo.bind("<<ComboboxSelected>>", self.on_trigger_changed)
         if not self.ai_available:
             self.ai_trigger_combo.state(("disabled",))
+        self.ai_trigger_combo.pack(side="left")
 
-        # AI Processing Interval (Time mode)
-        self.ai_interval_label = ttk.Label(self.bot_frame, text="min:")
-        interval_values = [str(i) for i in range(1, 11)]  # 1-10 minutes
-        self.ai_interval_combo = ttk.Combobox(self.bot_frame, values=interval_values, state="readonly", width=5)
-        self.ai_interval_combo.current(1)  # Default to 2 minutes
+        # AI Interval/Words (same row, toggled)
+        self.ai_interval_label = ttk.Label(ai_trigger_frame, text=" min:")
+        self.ai_interval_label.pack(side="left", padx=(5, 2))
+        interval_values = [str(i) for i in range(1, 11)]
+        self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_values, state="readonly", width=5)
+        self.ai_interval_combo.current(1)
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
+        self.ai_interval_combo.pack(side="left")
 
-        # AI Processing Word Count (Words mode)
-        self.ai_words_label = ttk.Label(self.bot_frame, text="words:")
-        self.ai_words_spin = ttk.Spinbox(self.bot_frame, from_=50, to=500, increment=50, state="readonly", width=5)
-        self.ai_words_spin.set(150)  # Default to 150 words
+        self.ai_words_label = ttk.Label(ai_trigger_frame, text=" words:")
+        self.ai_words_spin = ttk.Spinbox(ai_trigger_frame, from_=50, to=500, increment=50, state="readonly", width=5)
+        self.ai_words_spin.set(150)
         if not self.ai_available:
             self.ai_words_spin.state(("disabled",))
 
-        self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
-        self.level_label = ttk.Label(self.bot_frame, text="Level:")
-        self.level_bar = ttk.Progressbar(self.bot_frame, length=100, mode='determinate', maximum=100)
-        self.status_label = ttk.Label(self.bot_frame, text="", foreground="red")
+        # === PROMPT ===
+        prompt_frame = ttk.Frame(self.controls_frame)
+        prompt_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
 
-        # Pack critical controls from right to left - they stay visible when window is narrow
-        self.level_bar.pack(side="right", padx=(2, 5))
-        self.level_label.pack(side="right", padx=(5, 0))
-        self.control_button.pack(side="right", padx=(5, 5))
+        ttk.Label(prompt_frame, text="Prompt:").pack(side="top", anchor="w", pady=(0, 2))
+        self.prompt_entry = ttk.Entry(prompt_frame, state="normal")
+        self.prompt_entry.pack(side="top", fill="x")
 
-        # Pack other controls from left to right
-        self.source_label.pack(side="left", padx=(5, 5))
-        self.source_combo.pack(side="left", padx=(0, 5))
-        self.target_label.pack(side="left", padx=(5, 5))
-        self.target_combo.pack(side="left", padx=(0, 5))
-        self.ai_check.pack(side="left", padx=(5, 5))
-        self.ai_mode_label.pack(side="left", padx=(0, 2))
-        self.ai_mode_combo.pack(side="left", padx=(0, 5))
-        self.ai_model_label.pack(side="left", padx=(5, 2))
-        self.ai_model_combo.pack(side="left", padx=(0, 5))
-        self.ai_trigger_label.pack(side="left", padx=(5, 2))
-        self.ai_trigger_combo.pack(side="left", padx=(0, 2))
-        self.ai_interval_label.pack(side="left", padx=(2, 2))
-        self.ai_interval_combo.pack(side="left", padx=(0, 5))
-        # Don't pack words controls initially - they're shown/hidden by on_trigger_changed
-        self.prompt_label.pack(side="left", padx=(5, 5))
-        self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
+        # === CONTROL BUTTON & LEVEL ===
+        control_frame = ttk.Frame(self.controls_frame)
+        control_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
 
-        # Status label fills remaining space
-        self.status_label.pack(side="left", padx=(5, 5), fill="x", expand=True)
+        self.control_button = ttk.Button(control_frame, text="Start", command=self.start, state="normal")
+        self.control_button.pack(side="top", fill="x", pady=(0, 5))
+
+        level_frame = ttk.Frame(control_frame)
+        level_frame.pack(side="top", fill="x")
+        ttk.Label(level_frame, text="Level:").pack(side="left", padx=(0, 5))
+        self.level_bar = ttk.Progressbar(level_frame, length=100, mode='determinate', maximum=100)
+        self.level_bar.pack(side="left", fill="x", expand=True)
+
+        # === STATUS ===
+        self.status_label = ttk.Label(self.controls_frame, text="", foreground="red", wraplength=330)
+        self.status_label.grid(row=row, column=0, sticky="ew")
+        row += 1
+
+        # State variables
         self.ready = [None]
         self.error = [None]
-        self.level = [0]  # Audio level indicator
-        self.autotype_error_shown = False  # Only show error once
-    
+        self.level = [0]
+        self.autotype_error_shown = False
+
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
         if self.autotype_enabled and text:
@@ -282,103 +349,37 @@ class App(tk.Tk):
 
         if trigger_mode == "Time":
             # Show time controls, hide word controls
-            self.ai_interval_label.pack(side="left", padx=(2, 2), before=self.prompt_label)
-            self.ai_interval_combo.pack(side="left", padx=(0, 5), before=self.prompt_label)
             self.ai_words_label.pack_forget()
             self.ai_words_spin.pack_forget()
+            if not self.ai_interval_label.winfo_ismapped():
+                self.ai_interval_label.pack(side="left", padx=(5, 2))
+                self.ai_interval_combo.pack(side="left")
         else:  # Words
             # Show word controls, hide time controls
             self.ai_interval_label.pack_forget()
             self.ai_interval_combo.pack_forget()
-            self.ai_words_label.pack(side="left", padx=(2, 2), before=self.prompt_label)
-            self.ai_words_spin.pack(side="left", padx=(0, 5), before=self.prompt_label)
+            if not self.ai_words_label.winfo_ismapped():
+                self.ai_words_label.pack(side="left", padx=(5, 2))
+                self.ai_words_spin.pack(side="left")
 
     def toggle_text_display(self):
-        """Toggle visibility of text display widgets and non-essential controls."""
+        """Toggle visibility of text panes."""
         if self.text_visible:
-            # MINIMAL MODE: Hide text displays and non-essential controls
+            # MINIMAL MODE: Hide text panes
             self.ts_text.grid_remove()
             self.tl_text.grid_remove()
-            self.hide_text_button.config(text="Show Text ▲")
+            self.hide_text_button.config(text="Show Text ▶")
             self.text_visible = False
-
-            # Hide non-essential controls in top frame
-            self.model_label.pack_forget()
-            self.model_combo.pack_forget()
-            self.vad_check.pack_forget()
-            self.para_check.pack_forget()
-            self.device_label.pack_forget()
-            self.device_combo.pack_forget()
-            self.memory_label.pack_forget()
-            self.memory_spin.pack_forget()
-            self.patience_label.pack_forget()
-            self.patience_spin.pack_forget()
-            self.timeout_label.pack_forget()
-            self.timeout_spin.pack_forget()
-
-            # Hide non-essential controls in bottom frame
-            self.source_label.pack_forget()
-            self.source_combo.pack_forget()
-            self.target_label.pack_forget()
-            self.target_combo.pack_forget()
-            self.ai_check.pack_forget()
-            self.ai_mode_label.pack_forget()
-            self.ai_mode_combo.pack_forget()
-            self.ai_model_label.pack_forget()
-            self.ai_model_combo.pack_forget()
-            self.ai_trigger_label.pack_forget()
-            self.ai_trigger_combo.pack_forget()
-            self.ai_interval_label.pack_forget()
-            self.ai_interval_combo.pack_forget()
-            self.ai_words_label.pack_forget()
-            self.ai_words_spin.pack_forget()
-            self.prompt_label.pack_forget()
-            self.prompt_entry.pack_forget()
-
-            # Adjust minimum size for minimal mode
-            self.minsize(600, 80)
-
+            # Adjust minimum size for minimal mode (narrow column)
+            self.minsize(380, 600)
         else:
-            # FULL MODE: Show text displays and all controls
+            # FULL MODE: Show text panes
             self.ts_text.grid()
             self.tl_text.grid()
-            self.hide_text_button.config(text="Hide Text ▼")
+            self.hide_text_button.config(text="Hide Text ◀")
             self.text_visible = True
-
-            # Restore top frame controls (after type_check, before device_label)
-            self.model_label.pack(side="left", padx=(5, 5), after=self.hide_text_button)
-            self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True, after=self.model_label)
-            self.vad_check.pack(side="left", padx=(0, 5), after=self.model_combo)
-            self.para_check.pack(side="left", padx=(0, 5), after=self.vad_check)
-            self.type_check.pack(side="left", padx=(0, 5), after=self.para_check)
-            self.device_label.pack(side="left", padx=(5, 5), after=self.type_check)
-            self.device_combo.pack(side="left", padx=(0, 5), after=self.device_label)
-            self.memory_label.pack(side="left", padx=(5, 5), after=self.device_combo)
-            self.memory_spin.pack(side="left", padx=(0, 5), after=self.memory_label)
-            self.patience_label.pack(side="left", padx=(5, 5), after=self.memory_spin)
-            self.patience_spin.pack(side="left", padx=(0, 5), after=self.patience_label)
-            self.timeout_label.pack(side="left", padx=(5, 5), after=self.patience_spin)
-            self.timeout_spin.pack(side="left", padx=(0, 5), after=self.timeout_label)
-
-            # Restore bottom frame controls (before status_label, after nothing/left side)
-            self.source_label.pack(side="left", padx=(5, 5), before=self.status_label)
-            self.source_combo.pack(side="left", padx=(0, 5), before=self.status_label)
-            self.target_label.pack(side="left", padx=(5, 5), before=self.status_label)
-            self.target_combo.pack(side="left", padx=(0, 5), before=self.status_label)
-            self.ai_check.pack(side="left", padx=(5, 5), before=self.status_label)
-            self.ai_mode_label.pack(side="left", padx=(0, 2), before=self.status_label)
-            self.ai_mode_combo.pack(side="left", padx=(0, 5), before=self.status_label)
-            self.ai_model_label.pack(side="left", padx=(5, 2), before=self.status_label)
-            self.ai_model_combo.pack(side="left", padx=(0, 5), before=self.status_label)
-            self.ai_trigger_label.pack(side="left", padx=(5, 2), before=self.status_label)
-            self.ai_trigger_combo.pack(side="left", padx=(0, 2), before=self.status_label)
-            self.ai_interval_label.pack(side="left", padx=(2, 2), before=self.status_label)
-            self.ai_interval_combo.pack(side="left", padx=(0, 5), before=self.status_label)
-            self.prompt_label.pack(side="left", padx=(5, 5), before=self.status_label)
-            self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True, before=self.status_label)
-
-            # Restore minimum size
-            self.minsize(800, 200)
+            # Restore minimum size for full mode (two columns)
+            self.minsize(900, 600)
 
     def refresh_mics(self):
         current = self.mic_combo.get()
