@@ -53,10 +53,11 @@ MODEL_VRAM = {
 
 
 class Text(tk.Text):
-    def __init__(self, master, on_new_text=None):
+    def __init__(self, master, on_new_text=None, on_text_changed=None):
         super().__init__(master)
         self.res_queue = Queue(PairDeque())
         self.on_new_text = on_new_text  # Callback for NEW text only
+        self.on_text_changed = on_text_changed  # Callback when any text changes
         self.tag_config("done", foreground="black")
         self.tag_config("curr", foreground="blue", underline=True)
         self.insert("end", "  ", "done")
@@ -67,6 +68,7 @@ class Text(tk.Text):
         self.poll()
 
     def poll(self):
+        text_changed = False
         while self.res_queue:
             if res := self.res_queue.get():
                 done, curr = res
@@ -82,6 +84,7 @@ class Text(tk.Text):
                 self.record = self.index("end-1c")
                 self.insert("end", curr, "curr")
                 self.see("end")
+                text_changed = True
 
                 # Fire callback with only NEW text
                 if new_text and self.on_new_text:
@@ -96,6 +99,12 @@ class Text(tk.Text):
                 self.record = self.index("end-1c")
                 self.prev_done = ""  # Reset for next segment
                 self.see("end")
+                text_changed = True
+
+        # Fire text changed callback if text was modified
+        if text_changed and self.on_text_changed:
+            self.on_text_changed()
+
         self.after(100, self.poll)
 
     def clear(self):
@@ -104,6 +113,9 @@ class Text(tk.Text):
         self.insert("end", "  ", "done")
         self.record = self.index("end-1c")
         self.prev_done = ""
+        # Fire text changed callback after clearing
+        if self.on_text_changed:
+            self.on_text_changed()
 
 
 class App(tk.Tk):
@@ -154,16 +166,26 @@ class App(tk.Tk):
         # Text frame with labels
         self.text_frame = ttk.Frame(self)
 
-        # Whisper output (top)
-        ts_label = ttk.Label(self.text_frame, text="Whisper Output", font=('TkDefaultFont', 9, 'bold'))
-        ts_label.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 2))
-        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription)
+        # Whisper output (top) - header frame with label and count
+        ts_header = ttk.Frame(self.text_frame)
+        ts_header.grid(row=0, column=0, sticky="ew", padx=5, pady=(0, 2))
+        ts_label = ttk.Label(ts_header, text="Whisper Output", font=('TkDefaultFont', 9, 'bold'))
+        ts_label.pack(side="left")
+        self.ts_count_label = ttk.Label(ts_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
+        self.ts_count_label.pack(side="right")
+
+        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
         self.ts_text.grid(row=1, column=0, sticky="nsew")
 
-        # Translated/Proofread output (bottom)
-        tl_label = ttk.Label(self.text_frame, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
-        tl_label.grid(row=2, column=0, sticky="w", padx=5, pady=(5, 2))
-        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation)
+        # Translated/Proofread output (bottom) - header frame with label and count
+        tl_header = ttk.Frame(self.text_frame)
+        tl_header.grid(row=2, column=0, sticky="ew", padx=5, pady=(5, 2))
+        tl_label = ttk.Label(tl_header, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        tl_label.pack(side="left")
+        self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
+        self.tl_count_label.pack(side="right")
+
+        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
         self.tl_text.grid(row=3, column=0, sticky="nsew")
 
         # Configure text_frame grid
@@ -542,6 +564,20 @@ class App(tk.Tk):
         # TTS now accumulates from raw transcription (on_new_transcription)
         # so ALL speech is captured, not just what gets proofread
         pass
+
+    def update_ts_count(self):
+        """Update character and word count for Whisper output."""
+        text = self.ts_text.get("1.0", "end-1c").strip()
+        char_count = len(text)
+        word_count = len(text.split()) if text else 0
+        self.ts_count_label.config(text=f"{char_count} chars, {word_count} words")
+
+    def update_tl_count(self):
+        """Update character and word count for Translated/Proofread output."""
+        text = self.tl_text.get("1.0", "end-1c").strip()
+        char_count = len(text)
+        word_count = len(text.split()) if text else 0
+        self.tl_count_label.config(text=f"{char_count} chars, {word_count} words")
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
