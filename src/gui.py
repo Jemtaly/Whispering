@@ -4,39 +4,129 @@
 import threading
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import core
 from cmque import PairDeque, Queue
 from settings import Settings
 
 
-class ToolTip:
-    """Simple tooltip helper."""
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show)
-        self.widget.bind("<Leave>", self.hide)
+class HelpDialog:
+    """Help dialog with detailed information."""
 
-    def show(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
+    # Track open dialogs for toggle behavior
+    _open_dialogs = {}
 
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
+    # Compact help text for each section
+    HELP_TEXT = {
+        "model": """Model: Whisper model size (tiny→large-v3, larger=more accurate)
 
-        label = tk.Label(self.tooltip, text=self.text, background="#ffffe0",
-                        relief="solid", borderwidth=1, font=("TkDefaultFont", 9))
-        label.pack()
+VAD: Voice Activity Detection (filters silence/noise)
 
-    def hide(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
+¶: Adaptive paragraph detection (auto line breaks by pauses)
+
+⌨: Auto-type to focused window (dictation mode)
+
+Dev: Inference device (cuda=GPU, cpu=CPU, auto=best)
+
+Mem: Context segments 1-10 (higher=better context, slower)
+
+Pat: Patience seconds (wait time before finalizing segment)
+
+Time: Translation timeout seconds""",
+
+        "translate": """Src: Source language (auto=detect, or select specific)
+
+Tgt: Target language (none=disabled, or select for Google Translate)
+
+Note: AI Processing overrides Google Translate when enabled.""",
+
+        "ai": """Enable AI: Intelligent proofreading and translation
+
+Mode: Proofread | Translate | Proofread+Translate
+
+Model: AI model selection (larger=more capable, higher cost)
+
+Trigger: Time (every N min) | Words (every N words)
+
+Setup: Add OPENROUTER_API_KEY to .env
+See AI_SETUP.md for details.""",
+
+        "tts": """Enable TTS: Convert text to speech
+
+Voice: Browse=upload ref audio for cloning | Clear=default
+
+Save File: Auto-save to tts_output/ with timestamp
+
+Format: WAV (lossless) | OGG (compressed)
+
+Setup: See INSTALL_TTS.md"""
+    }
+
+    @staticmethod
+    def show(parent, section):
+        """Show help dialog for a section with toggle behavior."""
+        if section not in HelpDialog.HELP_TEXT:
+            return
+
+        # Toggle: if dialog is already open for this section, close it
+        if section in HelpDialog._open_dialogs:
+            try:
+                HelpDialog._open_dialogs[section].destroy()
+                del HelpDialog._open_dialogs[section]
+            except:
+                pass
+            return
+
+        # Create new dialog window
+        dialog = tk.Toplevel(parent)
+        dialog.title(f"Help - {section.title()}")
+        dialog.geometry("450x280")
+        dialog.resizable(False, False)
+
+        # Create text widget with scrollbar
+        text_frame = ttk.Frame(dialog)
+        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        text_widget = tk.Text(text_frame, wrap="word", font=('TkDefaultFont', 9),
+                             yscrollcommand=scrollbar.set, padx=8, pady=8)
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=text_widget.yview)
+
+        # Insert help text
+        text_widget.insert("1.0", HelpDialog.HELP_TEXT[section])
+        text_widget.config(state="disabled")  # Read-only
+
+        # Track dialog
+        HelpDialog._open_dialogs[section] = dialog
+
+        # Click outside to close functionality
+        def on_focus_out(event):
+            # Close dialog when clicking outside
+            try:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                    if section in HelpDialog._open_dialogs:
+                        del HelpDialog._open_dialogs[section]
+            except:
+                pass
+
+        # Cleanup on close
+        def on_close():
+            try:
+                if section in HelpDialog._open_dialogs:
+                    del HelpDialog._open_dialogs[section]
+                dialog.destroy()
+            except:
+                pass
+
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Bind focus out after a delay (to avoid immediate close on creation)
+        dialog.after(200, lambda: dialog.bind("<FocusOut>", on_focus_out))
 
 
 # Model VRAM estimates (based on faster-whisper benchmarks)
@@ -53,10 +143,11 @@ MODEL_VRAM = {
 
 
 class Text(tk.Text):
-    def __init__(self, master, on_new_text=None):
+    def __init__(self, master, on_new_text=None, on_text_changed=None):
         super().__init__(master)
         self.res_queue = Queue(PairDeque())
         self.on_new_text = on_new_text  # Callback for NEW text only
+        self.on_text_changed = on_text_changed  # Callback when any text changes
         self.tag_config("done", foreground="black")
         self.tag_config("curr", foreground="blue", underline=True)
         self.insert("end", "  ", "done")
@@ -67,6 +158,7 @@ class Text(tk.Text):
         self.poll()
 
     def poll(self):
+        text_changed = False
         while self.res_queue:
             if res := self.res_queue.get():
                 done, curr = res
@@ -82,6 +174,7 @@ class Text(tk.Text):
                 self.record = self.index("end-1c")
                 self.insert("end", curr, "curr")
                 self.see("end")
+                text_changed = True
 
                 # Fire callback with only NEW text
                 if new_text and self.on_new_text:
@@ -96,6 +189,12 @@ class Text(tk.Text):
                 self.record = self.index("end-1c")
                 self.prev_done = ""  # Reset for next segment
                 self.see("end")
+                text_changed = True
+
+        # Fire text changed callback if text was modified
+        if text_changed and self.on_text_changed:
+            self.on_text_changed()
+
         self.after(100, self.poll)
 
     def clear(self):
@@ -104,6 +203,9 @@ class Text(tk.Text):
         self.insert("end", "  ", "done")
         self.record = self.index("end-1c")
         self.prev_done = ""
+        # Fire text changed callback after clearing
+        if self.on_text_changed:
+            self.on_text_changed()
 
 
 class App(tk.Tk):
@@ -118,11 +220,17 @@ class App(tk.Tk):
         # Load text visibility state from settings (default: True)
         self.text_visible = self.settings.get("text_visible", True)
 
+        # Flag to track if we're shutting down (prevent TTS crashes)
+        self.is_shutting_down = False
+
         # Set minimum window size - will adjust based on mode
+        # For minimal mode: calculate based on controls, for full mode add space for text
+        # Minimal mode: 400x850 minimum (never go below this)
+        # Full mode: 900x850 gives space for text panels
         if self.text_visible:
-            self.minsize(900, 600)  # Full mode
+            self.minsize(900, 850)  # Full mode - more vertical space for text
         else:
-            self.minsize(380, 600)  # Minimal mode
+            self.minsize(400, 850)  # Minimal mode - never below 400x850
 
         # Try to load AI configuration
         self.ai_config = None
@@ -153,16 +261,26 @@ class App(tk.Tk):
         # Text frame with labels
         self.text_frame = ttk.Frame(self)
 
-        # Whisper output (top)
-        ts_label = ttk.Label(self.text_frame, text="Whisper Output", font=('TkDefaultFont', 9, 'bold'))
-        ts_label.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 2))
-        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription)
+        # Whisper output (top) - header frame with label and count
+        ts_header = ttk.Frame(self.text_frame)
+        ts_header.grid(row=0, column=0, sticky="ew", padx=5, pady=(0, 2))
+        ts_label = ttk.Label(ts_header, text="Whisper Output", font=('TkDefaultFont', 9, 'bold'))
+        ts_label.pack(side="left")
+        self.ts_count_label = ttk.Label(ts_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
+        self.ts_count_label.pack(side="right")
+
+        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
         self.ts_text.grid(row=1, column=0, sticky="nsew")
 
-        # Translated/Proofread output (bottom)
-        tl_label = ttk.Label(self.text_frame, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
-        tl_label.grid(row=2, column=0, sticky="w", padx=5, pady=(5, 2))
-        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation)
+        # Translated/Proofread output (bottom) - header frame with label and count
+        tl_header = ttk.Frame(self.text_frame)
+        tl_header.grid(row=2, column=0, sticky="ew", padx=5, pady=(5, 2))
+        tl_label = ttk.Label(tl_header, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        tl_label.pack(side="left")
+        self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
+        self.tl_count_label.pack(side="right")
+
+        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
         self.tl_text.grid(row=3, column=0, sticky="nsew")
 
         # Configure text_frame grid
@@ -196,16 +314,22 @@ class App(tk.Tk):
         self.mic_combo.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.mic_button = ttk.Button(mic_frame, text="↻", width=2, command=self.refresh_mics)
         self.mic_button.pack(side="left")
-        ToolTip(self.mic_button, "Refresh microphone list")
 
         # === TOGGLE BUTTON ===
         self.hide_text_button = ttk.Button(self.controls_frame, text="Hide Text ◀", command=self.toggle_text_display)
         self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
-        ToolTip(self.hide_text_button, "Hide/show text display panels")
 
         # === MODEL SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        # Section header with help button
+        model_header = ttk.Frame(self.controls_frame)
+        model_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(model_header, text="Model Settings", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        help_btn = ttk.Button(model_header, text="?", width=2, command=lambda: HelpDialog.show(self, "model"))
+        help_btn.pack(side="right")
         row += 1
 
         model_frame = ttk.Frame(self.controls_frame)
@@ -217,7 +341,6 @@ class App(tk.Tk):
         self.model_combo.set("large-v3")
         self.model_combo.pack(side="left", fill="x", expand=True)
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_changed)
-        ToolTip(self.model_combo, "Whisper model size (larger = more accurate)")
 
         # VRAM info label
         self.vram_label = ttk.Label(self.controls_frame, text=MODEL_VRAM.get("large-v3", ""),
@@ -233,23 +356,19 @@ class App(tk.Tk):
         self.vad_check = ttk.Checkbutton(options_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
         self.vad_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.vad_check, "Voice Activity Detection filter")
 
         self.para_check = ttk.Checkbutton(options_frame, text="¶", onvalue=True, offvalue=False)
         self.para_check.state(("!alternate", "selected"))
         self.para_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.para_check, "Adaptive paragraph detection")
 
         self.type_check = ttk.Checkbutton(options_frame, text="⌨", onvalue=True, offvalue=False)
         self.type_check.state(("!alternate",))
         self.type_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.type_check, "Auto-type to focused window")
 
         ttk.Label(options_frame, text="Dev:").pack(side="left", padx=(0, 2))
         self.device_combo = ttk.Combobox(options_frame, values=core.devices, state="readonly", width=6)
         self.device_combo.current(1)
         self.device_combo.pack(side="left")
-        ToolTip(self.device_combo, "Inference device (CUDA/CPU)")
 
         # === MEMORY, PATIENCE, TIMEOUT ===
         params_frame = ttk.Frame(self.controls_frame)
@@ -260,26 +379,27 @@ class App(tk.Tk):
         self.memory_spin = ttk.Spinbox(params_frame, from_=1, to=10, increment=1, state="readonly", width=4)
         self.memory_spin.set(3)
         self.memory_spin.pack(side="left", padx=(0, 8))
-        ToolTip(self.memory_spin, "Previous segments as context")
 
         ttk.Label(params_frame, text="Pat:").pack(side="left", padx=(0, 2))
         self.patience_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.patience_spin.set(5.0)
         self.patience_spin.pack(side="left", padx=(0, 8))
-        ToolTip(self.patience_spin, "Seconds before finalizing segment")
 
         ttk.Label(params_frame, text="Time:").pack(side="left", padx=(0, 2))
         self.timeout_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.timeout_spin.set(5.0)
         self.timeout_spin.pack(side="left")
-        ToolTip(self.timeout_spin, "Translation timeout (seconds)")
 
         # === TRANSLATE/PROOFREAD SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="Translate/Proofread", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        translate_header = ttk.Frame(self.controls_frame)
+        translate_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(translate_header, text="Translation", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        help_btn = ttk.Button(translate_header, text="?", width=2, command=lambda: HelpDialog.show(self, "translate"))
+        help_btn.pack(side="right")
         row += 1
 
         lang_frame = ttk.Frame(self.controls_frame)
@@ -290,21 +410,24 @@ class App(tk.Tk):
         self.source_combo = ttk.Combobox(lang_frame, values=["auto"] + core.sources, state="readonly", width=5)
         self.source_combo.current(0)
         self.source_combo.pack(side="left", padx=(0, 10))
-        ToolTip(self.source_combo, "Source language (auto-detect)")
 
         ttk.Label(lang_frame, text="Tgt:").pack(side="left", padx=(0, 2))
         self.target_combo = ttk.Combobox(lang_frame, values=["none"] + core.targets, state="readonly", width=5)
         self.target_combo.current(0)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
         self.target_combo.pack(side="left")
-        ToolTip(self.target_combo, "Target language for translation")
 
         # === AI SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="AI Processing", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        ai_header = ttk.Frame(self.controls_frame)
+        ai_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(ai_header, text="AI Processing", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        if self.ai_available:
+            help_btn = ttk.Button(ai_header, text="?", width=2, command=lambda: HelpDialog.show(self, "ai"))
+            help_btn.pack(side="right")
         row += 1
 
         ai_enable_frame = ttk.Frame(self.controls_frame)
@@ -317,7 +440,6 @@ class App(tk.Tk):
         else:
             self.ai_check.state(("disabled",))
         self.ai_check.pack(side="left", padx=(0, 5))
-        ToolTip(self.ai_check, "Enable AI-powered proofreading/translation")
 
         # AI Mode
         ai_mode_frame = ttk.Frame(self.controls_frame)
@@ -398,8 +520,13 @@ class App(tk.Tk):
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(10, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="Text-to-Speech", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        tts_header = ttk.Frame(self.controls_frame)
+        tts_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(tts_header, text="Text-to-Speech", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        if self.tts_available:
+            help_btn = ttk.Button(tts_header, text="?", width=2, command=lambda: HelpDialog.show(self, "tts"))
+            help_btn.pack(side="right")
         row += 1
 
         tts_enable_frame = ttk.Frame(self.controls_frame)
@@ -412,7 +539,6 @@ class App(tk.Tk):
         else:
             self.tts_check.state(("disabled",))
         self.tts_check.pack(side="left", padx=(0, 5))
-        ToolTip(self.tts_check, "Enable text-to-speech for proofread output")
 
         # Voice reference
         tts_voice_frame = ttk.Frame(self.controls_frame)
@@ -426,7 +552,6 @@ class App(tk.Tk):
         if not self.tts_available:
             self.tts_browse_button.state(("disabled",))
         self.tts_browse_button.pack(side="left", padx=(0, 5))
-        ToolTip(self.tts_browse_button, "Upload reference voice audio for cloning")
 
         self.tts_clear_button = ttk.Button(tts_voice_frame, text="Clear", width=6, command=self.clear_voice)
         if not self.tts_available:
@@ -451,7 +576,6 @@ class App(tk.Tk):
         if not self.tts_available:
             self.tts_format_combo.state(("disabled",))
         self.tts_format_combo.pack(side="left")
-        ToolTip(self.tts_format_combo, "Audio file format")
 
         # TTS status
         self.tts_status_label = ttk.Label(self.controls_frame, text="", foreground="blue",
@@ -541,6 +665,20 @@ class App(tk.Tk):
         # TTS now accumulates from raw transcription (on_new_transcription)
         # so ALL speech is captured, not just what gets proofread
         pass
+
+    def update_ts_count(self):
+        """Update character and word count for Whisper output."""
+        text = self.ts_text.get("1.0", "end-1c").strip()
+        char_count = len(text)
+        word_count = len(text.split()) if text else 0
+        self.ts_count_label.config(text=f"{char_count} chars, {word_count} words")
+
+    def update_tl_count(self):
+        """Update character and word count for Translated/Proofread output."""
+        text = self.tl_text.get("1.0", "end-1c").strip()
+        char_count = len(text)
+        word_count = len(text.split()) if text else 0
+        self.tl_count_label.config(text=f"{char_count} chars, {word_count} words")
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
@@ -634,18 +772,21 @@ class App(tk.Tk):
 
     def on_tts_progress(self, message: str):
         """Called during TTS synthesis progress."""
-        self.after(0, lambda: self.tts_status_label.config(text=message, foreground="blue"))
+        if not self.is_shutting_down:
+            self.after(0, lambda: self.tts_status_label.config(text=message, foreground="blue"))
 
     def on_tts_complete(self, filepath: str):
         """Called when TTS synthesis completes."""
-        filename = filepath.split("/")[-1]
-        self.after(0, lambda: self.tts_status_label.config(
-            text=f"✓ Saved: {filename}", foreground="green"))
+        if not self.is_shutting_down:
+            filename = filepath.split("/")[-1]
+            self.after(0, lambda: self.tts_status_label.config(
+                text=f"✓ Saved: {filename}", foreground="green"))
 
     def on_tts_error(self, error_msg: str):
         """Called when TTS synthesis fails."""
-        self.after(0, lambda: self.tts_status_label.config(
-            text=f"TTS error: {error_msg}", foreground="red"))
+        if not self.is_shutting_down:
+            self.after(0, lambda: self.tts_status_label.config(
+                text=f"TTS error: {error_msg}", foreground="red"))
 
     def toggle_text_display(self):
         """Toggle visibility of text panes."""
@@ -654,15 +795,31 @@ class App(tk.Tk):
             self.text_frame.grid_remove()
             self.hide_text_button.config(text="Show Text ▶")
             self.text_visible = False
-            # Adjust minimum size for minimal mode (narrow column)
-            self.minsize(380, 600)
+
+            # Reconfigure grid: controls column expands to fill window
+            self.columnconfigure(0, weight=1, minsize=350)
+            self.columnconfigure(1, weight=0)  # Text column won't expand
+
+            # Adjust minimum size for minimal mode (never below 400x850)
+            self.minsize(400, 850)
+
+            # Resize window to minimal width
+            self.geometry("400x850")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
             self.hide_text_button.config(text="Hide Text ◀")
             self.text_visible = True
-            # Restore minimum size for full mode (two columns)
-            self.minsize(900, 600)
+
+            # Reconfigure grid: restore original layout
+            self.columnconfigure(0, weight=0, minsize=350)  # Controls fixed
+            self.columnconfigure(1, weight=1)  # Text column expands
+
+            # Restore minimum size for full mode
+            self.minsize(900, 850)
+
+            # Resize window to show both columns
+            self.geometry("900x850")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
@@ -670,23 +827,53 @@ class App(tk.Tk):
 
     def on_closing(self):
         """Save settings before closing the window."""
+        # Set shutdown flag to prevent TTS thread crashes
+        self.is_shutting_down = True
+
+        # Stop any ongoing transcription first
+        if hasattr(self, 'ready') and self.ready[0] is not None:
+            self.ready[0] = False
+            # Give threads a moment to notice the flag
+            self.after(100, self._continue_closing)
+        else:
+            self._continue_closing()
+
+    def _continue_closing(self):
+        """Continue with cleanup after stopping transcription."""
         # Save text visibility (already saved in toggle, but ensure it's current)
         self.settings.set("text_visible", self.text_visible)
 
         # Save TTS settings
         if self.tts_available:
-            tts_enabled = "selected" in self.tts_check.state()
-            tts_save_file = "selected" in self.tts_save_check.state()
-            self.settings.set("tts_enabled", tts_enabled)
-            self.settings.set("tts_save_file", tts_save_file)
+            try:
+                tts_enabled = "selected" in self.tts_check.state()
+                tts_save_file = "selected" in self.tts_save_check.state()
+                self.settings.set("tts_enabled", tts_enabled)
+                self.settings.set("tts_save_file", tts_save_file)
+            except Exception as e:
+                print(f"Error saving TTS settings: {e}")
 
         # Save AI settings
         if self.ai_available:
-            ai_enabled = "selected" in self.ai_check.state()
-            self.settings.set("ai_enabled", ai_enabled)
+            try:
+                ai_enabled = "selected" in self.ai_check.state()
+                self.settings.set("ai_enabled", ai_enabled)
+            except Exception as e:
+                print(f"Error saving AI settings: {e}")
 
         # Persist to disk
         self.settings.save()
+
+        # Clean up TTS controller gracefully
+        if self.tts_controller is not None:
+            try:
+                # Clear callbacks to prevent accessing destroyed widgets
+                self.tts_controller.on_progress = None
+                self.tts_controller.on_complete = None
+                self.tts_controller.on_error = None
+                self.tts_controller = None
+            except Exception as e:
+                print(f"Error cleaning up TTS: {e}")
 
         # Close the window
         self.destroy()
@@ -820,4 +1007,8 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    try:
+        App().mainloop()
+    except KeyboardInterrupt:
+        # Graceful exit on Ctrl+C
+        pass

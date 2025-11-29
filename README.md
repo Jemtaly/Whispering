@@ -2,11 +2,21 @@
 
 Real-time speech transcription and translation using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and Google Translate. Available in both GUI and TUI versions.
 
+## Quick Start
+
+```bash
+git clone https://github.com/Jemtaly/Whispering.git
+cd Whispering
+./scripts/install.sh  # Install dependencies
+./scripts/run.sh      # Run the GUI
+```
+
 ## Features
 
 - **Real-time transcription** with iterative refinement for accuracy
 - **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
 - **Text-to-Speech (TTS)** - convert transcribed text back to audio with voice cloning support
+- **Transcript logging** - automatic session-based logging to timestamped files in `log_output/`
 - **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
 - **Editable transcript** - manually edit text and add paragraph breaks
@@ -19,7 +29,9 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 - **Audio level meter** to verify microphone input
 - **PipeWire/PulseAudio integration** for reliable audio capture
 - **Multiple model sizes** from tiny to large-v3
-- **Helpful tooltips** on all major controls
+- **Contextual help dialogs** - clickable "?" buttons with compact, easy-to-read help
+- **Organized project structure** - clean separation of source, config, scripts, and logs
+- **Graceful exit** - clean shutdown on Ctrl+C without error traces
 
 ## AI Features (Optional)
 
@@ -54,20 +66,47 @@ See [INSTALL_TTS.md](INSTALL_TTS.md) for installation instructions.
 
 ## Installation
 
+### Quick Install (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/Jemtaly/Whispering.git
+cd Whispering
+
+# Run the installation script
+./scripts/install.sh
+```
+
+The install script will:
+- Check Python version (3.8+ required)
+- Create a virtual environment
+- Install all dependencies
+- Optionally install CUDA libraries (if GPU detected)
+- Create necessary directories
+- Set up the .env file from template
+
+### Manual Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/Jemtaly/Whispering.git
 cd Whispering
 
 # Create virtual environment
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# For CUDA support, install NVIDIA libraries
+# For CUDA support, install NVIDIA libraries (optional)
 pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+
+# Create necessary directories
+mkdir -p log_output tts_output
+
+# Copy environment template (for AI features)
+cp config/.env.example .env
 ```
 
 ## Dependencies
@@ -87,13 +126,15 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 Use the launcher script (recommended for CUDA support):
 
 ```bash
-./run.sh
+./scripts/run.sh
 ```
 
 Or run directly:
 
 ```bash
-python gui.py
+# Make sure to set PYTHONPATH
+export PYTHONPATH="$PWD/src:$PYTHONPATH"
+python src/gui.py
 ```
 
 **GUI Layout:**
@@ -105,6 +146,10 @@ The GUI uses a two-column layout:
 **Main Controls:**
 - **Mic** - Select input device (system default uses PipeWire/PulseAudio), with refresh button
 - **Hide Text ◀** - Toggle minimal mode (hides text windows, state is saved)
+
+**Help Buttons:**
+- Click **?** next to section headers for context-sensitive help
+- Click again or click outside to close help dialogs
 
 **Model Section:**
 - **Model** - Whisper model size (default: large-v3) with VRAM estimate displayed below
@@ -139,7 +184,7 @@ The GUI uses a two-column layout:
 ### TUI
 
 ```bash
-python tui.py [options]
+python src/tui.py [options]
 ```
 
 **Options:**
@@ -161,20 +206,60 @@ python tui.py [options]
 | `--para-min-pause` | 0.8 | Minimum pause to consider (seconds) |
 | `--para-max-chars` | 500 | Max characters per paragraph |
 | `--para-max-words` | 100 | Max words per paragraph |
+| `--no-log` | off | Disable transcript logging to `log_output/` |
 
 **Example:**
 
 ```bash
 # Transcribe English, translate to Spanish, using GPU
-python tui.py --source en --target es --device cuda
+python src/tui.py --source en --target es --device cuda
 
 # Use specific microphone
-python tui.py --mic "Webcam"
+python src/tui.py --mic "Webcam"
+
+# Disable logging
+python src/tui.py --no-log
 ```
 
 **TUI Controls:**
 - `Space` - Start/Stop transcription
+- `L` - List recent log files
 - `Q` - Quit
+
+## Transcript Logging
+
+Transcriptions are automatically saved to timestamped log files in `log_output/`:
+
+**Log File Format:**
+- Filename: `transcript_YYYYMMDD_HHMMSS.txt`
+- Each entry includes timestamp
+- Session metadata (start/end times, duration)
+- Preserved paragraph breaks
+
+**Features:**
+- Automatic session management (one file per start/stop cycle)
+- Timestamped entries for reference
+- Clean, readable format
+- Press `L` in TUI to view recent logs
+- Logs are gitignored for privacy
+
+**Example Log:**
+```
+Whispering Transcript Log
+==================================================
+Session started: 2025-11-29 14:30:15
+==================================================
+
+[14:30:20] This is the first transcribed sentence.
+[14:30:25] Here's another line with proper formatting.
+
+[14:30:30] Paragraph breaks are preserved.
+
+==================================================
+Session ended: 2025-11-29 14:32:45
+Duration: 0:02:30
+==================================================
+```
 
 ## Audio Device Selection
 
@@ -195,7 +280,7 @@ The application intelligently selects audio devices:
 Run the debug script to check available devices:
 
 ```bash
-python debug_audio.py
+python src/debug_audio.py
 ```
 
 This will show:
@@ -309,13 +394,13 @@ Both text windows (Whisper Output and Translated/Proofread Output) are fully edi
 **Check your setup:**
 
 ```bash
-python autotype.py --check
+python src/autotype.py --check
 ```
 
 **Test auto-typing:**
 
 ```bash
-python autotype.py --test "Hello, world!"
+python src/autotype.py --test "Hello, world!"
 # Click on target window within 3 seconds
 ```
 
@@ -337,21 +422,44 @@ If you have CUDA 13 installed system-wide, the pip packages provide CUDA 12 libr
 
 ```
 Whispering/
-├── gui.py           # GUI application (Tkinter)
-├── tui.py           # TUI application (curses)
-├── core.py          # Core transcription/translation logic
-├── cmque.py         # Thread-safe queue utilities
-├── autotype.py      # Cross-platform typing utility
-├── ai_provider.py   # OpenRouter AI integration
-├── ai_config.py     # AI configuration loader
-├── ai_config.yaml   # AI models and prompts configuration
-├── settings.py      # Settings persistence framework
-├── .env.example     # Example environment variables template
-├── AI_SETUP.md      # AI features setup guide
-├── run.sh           # Launcher script (sets CUDA paths)
-├── debug_audio.py   # Audio device diagnostics
-└── requirements.txt # Python dependencies
+├── src/                    # Source code
+│   ├── gui.py              # GUI application (Tkinter)
+│   ├── tui.py              # TUI application (curses)
+│   ├── core.py             # Core transcription/translation logic
+│   ├── cmque.py            # Thread-safe queue utilities
+│   ├── autotype.py         # Cross-platform typing utility
+│   ├── ai_provider.py      # OpenRouter AI integration
+│   ├── ai_config.py        # AI configuration loader
+│   ├── settings.py         # Settings persistence framework
+│   ├── transcript_logger.py # Transcript logging to files
+│   ├── tts_controller.py   # Text-to-speech controller
+│   ├── tts_provider.py     # TTS provider interface
+│   ├── debug_audio.py      # Audio device diagnostics
+│   └── debug_cuda.py       # CUDA debugging utility
+│
+├── config/                 # Configuration files
+│   ├── ai_config.yaml      # AI models and prompts configuration
+│   └── .env.example        # Example environment variables template
+│
+├── scripts/                # Shell scripts
+│   ├── install.sh          # Installation script
+│   ├── run.sh              # Launcher script (sets CUDA paths)
+│   └── debug_env.sh        # Environment debugging
+│
+├── log_output/             # Transcript log files (gitignored)
+│   └── transcript_*.txt    # Auto-generated session logs
+│
+├── tts_output/             # TTS audio files (gitignored)
+│
+├── requirements.txt        # Python dependencies
+├── README.md               # This file
+├── AI_SETUP.md             # AI features setup guide
+├── INSTALL_TTS.md          # TTS installation guide
+├── STRUCTURE.md            # Detailed project structure docs
+└── .gitignore              # Git ignore rules
 ```
+
+See [STRUCTURE.md](STRUCTURE.md) for detailed documentation on the project organization.
 
 ## Extending
 
@@ -371,13 +479,13 @@ To use a different translation service, modify the `translate()` function in `co
 
 **Audio device crashes or hangs**
 - Use the `pipewire` or `pulse` virtual device instead of direct hardware
-- Run `debug_audio.py` to identify stable devices
+- Run `python src/debug_audio.py` to identify stable devices
 - Avoid JACK devices (known stability issues)
 
 **No audio level shown**
 - Check that the correct microphone is selected
 - Verify microphone isn't muted in system settings
-- Run `debug_audio.py` to test recording
+- Run `python src/debug_audio.py` to test recording
 
 **Slow transcription**
 - Use a smaller model (base, small) instead of large-v3
@@ -385,11 +493,11 @@ To use a different translation service, modify the `translate()` function in `co
 - Reduce the `memory` parameter
 
 **Auto-type not working**
-- Run `python autotype.py --check` to see available backends
+- Run `python src/autotype.py --check` to see available backends
 - Linux X11: Install xdotool and xclip: `sudo apt install xdotool xclip`
 - Linux Wayland: Install wtype: `sudo apt install wtype wl-clipboard`
 - Windows/macOS: Install pyautogui: `pip install pyautogui`
-- Test with: `python autotype.py --test "Hello"`
+- Test with: `python src/autotype.py --test "Hello"`
 
 ## License
 

@@ -17,7 +17,10 @@ load_dotenv()
 class AIConfig:
     """Manages AI configuration from YAML file."""
 
-    def __init__(self, config_path: str = "ai_config.yaml"):
+    def __init__(self, config_path: str = None):
+        # Default to ../config/ai_config.yaml relative to this file
+        if config_path is None:
+            config_path = Path(__file__).parent.parent / "config" / "ai_config.yaml"
         self.config_path = Path(config_path)
         self.config = self._load_config()
 

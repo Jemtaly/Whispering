@@ -7,13 +7,15 @@ import threading
 
 import core
 from cmque import PairDeque, Queue
+from transcript_logger import TranscriptLogger
 
 
 class Pad:
-    def __init__(self, h, w, t, l):
+    def __init__(self, h, w, t, l, logger=None):
         self.pad = curses.newpad(h * 2, w)
         self.h, self.w, self.t, self.l = h, w, t, l
         self.res_queue = Queue(PairDeque())
+        self.logger = logger
         self.add_done("> ")
         self.refresh()
 
@@ -51,6 +53,9 @@ class Pad:
             self.pad.move(y - t, x)
         self.y, self.x = self.pad.getyx()
         self.last = ""
+        # Log completed text (skip prompts)
+        if self.logger and done and done.strip() and not done.strip().startswith('>'):
+            self.logger.log_text(done)
 
     def update(self):
         while self.res_queue:
@@ -69,7 +74,10 @@ class Pad:
         self.refresh()
 
 
-def show(mic, model, vad, memory, patience, timeout, prompt, source, target, device, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100):
+def show(mic, model, vad, memory, patience, timeout, prompt, source, target, device, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, enable_logging=True):
+    # Create transcript logger
+    logger = TranscriptLogger() if enable_logging else None
+
     stdscr = curses.initscr()
     curses.setupterm()
     curses.curs_set(0)
@@ -93,28 +101,52 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target, dev
     stdscr.addch(b, r, curses.ACS_LRCORNER)
     stdscr.addch(t, m, curses.ACS_TTEE)
     stdscr.addch(b, m, curses.ACS_BTEE)
-    ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2)
+    ts_win = Pad(b - t - 1, m - l - 3, t + 1, l + 2, logger=logger)
     tl_win = Pad(b - t - 1, r - m - 3, t + 1, m + 2)
     ready = [None]
     error = [None]
     level = [0]  # Audio level (not displayed in TUI for now)
-    instr = " <Space> Start/Stop <Q> Quit"
+    instr = " <Space> Start/Stop <Q> Quit <L> List logs"
     state = "Stopped"
+    log_file = None
     while True:
         status = state
         if error[0] and state == "Stopped":
             status = f"Error: {error[0][:40]}"
+        elif log_file and state.startswith("Started"):
+            # Show log file being written
+            status = f"{state} (Logging)"
         stdscr.addstr(0, l, status + " " * (r - l + 1 - len(status) - len(instr)) + instr)
         stdscr.refresh()
         ts_win.update()
         tl_win.update()
         key = stdscr.getch()
         if key == ord("q") or key == ord("Q"):
+            # End logging session if active
+            if logger and log_file:
+                logger.end_session()
+                log_file = None
             break
+        elif key == ord("l") or key == ord("L"):
+            # Show recent log files
+            if logger:
+                curses.endwin()
+                print("\n" + logger.format_log_list())
+                print("\nPress Enter to continue...")
+                input()
+                stdscr = curses.initscr()
+                curses.setupterm()
+                curses.curs_set(0)
+                curses.noecho()
+                stdscr.clear()
+                stdscr.timeout(100)
         elif state.startswith("Stopped"):
             if key == ord(" "):
                 ready[0] = False
                 error[0] = None
+                # Start logging session
+                if logger:
+                    log_file = logger.start_session()
                 # Get mic index: smart default if not specified
                 mic_index = core.get_mic_index(mic) if mic else core.get_default_device_index()
                 threading.Thread(target=core.proc, args=(mic_index, model, vad, memory, patience, timeout, prompt, source, target, ts_win.res_queue, tl_win.res_queue, ready, device, error, level, para_detect, para_threshold_std, para_min_pause, para_max_chars, para_max_words), daemon=True).start()
@@ -125,6 +157,10 @@ def show(mic, model, vad, memory, patience, timeout, prompt, source, target, dev
                 state = "Stopping..."
         elif state.startswith("Stopping..."):
             if ready[0] is None:
+                # End logging session
+                if logger and log_file:
+                    saved_file = logger.end_session()
+                    log_file = None
                 state = "Stopped"
         elif state.startswith("Starting..."):
             if ready[0] is True:
@@ -152,10 +188,16 @@ def main():
     parser.add_argument("--para-min-pause", type=float, default=0.8, help="minimum pause duration to consider for break (default: 0.8s)")
     parser.add_argument("--para-max-chars", type=int, default=500, help="max characters per paragraph (default: 500)")
     parser.add_argument("--para-max-words", type=int, default=100, help="max words per paragraph (default: 100)")
+    # Logging arguments
+    parser.add_argument("--no-log", action="store_true", help="disable transcript logging to log_output/")
     args = parser.parse_args()
     show(args.mic, args.model, args.vad, args.memory, args.patience, args.timeout, args.prompt, args.source, args.target, args.device,
-         not args.no_para, args.para_threshold, args.para_min_pause, args.para_max_chars, args.para_max_words)
+         not args.no_para, args.para_threshold, args.para_min_pause, args.para_max_chars, args.para_max_words, not args.no_log)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Graceful exit on Ctrl+C
+        pass
