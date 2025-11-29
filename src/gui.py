@@ -4,39 +4,122 @@
 import threading
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import core
 from cmque import PairDeque, Queue
 from settings import Settings
 
 
-class ToolTip:
-    """Simple tooltip helper."""
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tooltip = None
-        self.widget.bind("<Enter>", self.show)
-        self.widget.bind("<Leave>", self.hide)
+class HelpDialog:
+    """Help dialog with detailed information."""
 
-    def show(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
+    # Help text for each section
+    HELP_TEXT = {
+        "model": """Model Settings
 
-        self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
-        self.tooltip.wm_geometry(f"+{x}+{y}")
+• Model: Whisper model size
+  - Larger models are more accurate but slower
+  - Recommended: large-v3 for best accuracy
+  - Use base/small for faster processing on CPU
 
-        label = tk.Label(self.tooltip, text=self.text, background="#ffffe0",
-                        relief="solid", borderwidth=1, font=("TkDefaultFont", 9))
-        label.pack()
+• VAD: Voice Activity Detection
+  - Filters out silence and background noise
+  - Reduces unnecessary processing
 
-    def hide(self, event=None):
-        if self.tooltip:
-            self.tooltip.destroy()
-            self.tooltip = None
+• ¶ (Paragraph): Adaptive paragraph detection
+  - Automatically inserts line breaks based on pauses
+  - Uses statistical analysis of speech patterns
+
+• ⌨ (Auto-type): Auto-type to focused window
+  - Types transcribed text into other applications
+  - Useful for dictation into browsers, editors, etc.
+
+• Dev: Inference device
+  - cuda: Use NVIDIA GPU (fastest)
+  - cpu: Use CPU only
+  - auto: Automatically select best device
+
+• Mem: Memory/context segments (1-10)
+  - Number of previous segments used as context
+  - Higher = better context but slower
+
+• Pat: Patience in seconds
+  - How long to wait before finalizing a segment
+  - Higher = more accurate but slower updates
+
+• Time: Translation timeout in seconds
+  - Maximum time to wait for translation service""",
+
+        "translate": """Translation/Proofreading
+
+• Src (Source): Source language
+  - Set to "auto" for automatic detection
+  - Or select specific language for better accuracy
+
+• Tgt (Target): Target language
+  - Set to "none" to disable translation
+  - Select language for Google Translate translation
+
+Note: If AI Processing is enabled, it will override
+Google Translate for more intelligent translation.""",
+
+        "ai": """AI Processing (OpenRouter)
+
+• Enable AI: Turn on AI-powered processing
+  - Provides intelligent proofreading and translation
+  - Uses advanced language models
+
+• Mode: Processing mode
+  - Proofread: Fix grammar, spelling, punctuation
+  - Translate: Translate to target language
+  - Proofread+Translate: Both operations
+
+• Model: AI model to use
+  - Different models have different capabilities
+  - Larger models are more capable but cost more
+
+• Trigger: When to process text
+  - Time: Process every N minutes
+  - Words: Process every N words
+
+• Interval/Words: Processing frequency
+  - Adjust based on your speaking speed
+  - Lower = more frequent updates, higher cost
+
+Setup: Add OPENROUTER_API_KEY to .env file
+See AI_SETUP.md for detailed instructions.""",
+
+        "tts": """Text-to-Speech
+
+• Enable TTS: Convert text to speech
+  - Generates audio from transcribed text
+  - Creates one file per session (start/stop)
+
+• Voice: Voice selection
+  - Browse: Upload reference audio for voice cloning
+  - Clear: Use default voice
+
+• Save File: Automatically save TTS output
+  - Saves to tts_output/ directory
+  - Filename includes timestamp
+
+• Format: Audio file format
+  - WAV: Lossless, larger files
+  - OGG: Compressed, smaller files
+
+Setup: See INSTALL_TTS.md for installation."""
+    }
+
+    @staticmethod
+    def show(parent, section):
+        """Show help dialog for a section."""
+        if section in HelpDialog.HELP_TEXT:
+            messagebox.showinfo(
+                f"Help - {section.title()}",
+                HelpDialog.HELP_TEXT[section],
+                parent=parent
+            )
 
 
 # Model VRAM estimates (based on faster-whisper benchmarks)
@@ -224,16 +307,22 @@ class App(tk.Tk):
         self.mic_combo.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.mic_button = ttk.Button(mic_frame, text="↻", width=2, command=self.refresh_mics)
         self.mic_button.pack(side="left")
-        ToolTip(self.mic_button, "Refresh microphone list")
 
         # === TOGGLE BUTTON ===
         self.hide_text_button = ttk.Button(self.controls_frame, text="Hide Text ◀", command=self.toggle_text_display)
         self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
-        ToolTip(self.hide_text_button, "Hide/show text display panels")
 
         # === MODEL SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        # Section header with help button
+        model_header = ttk.Frame(self.controls_frame)
+        model_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(model_header, text="Model Settings", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        help_btn = ttk.Button(model_header, text="?", width=2, command=lambda: HelpDialog.show(self, "model"))
+        help_btn.pack(side="right")
         row += 1
 
         model_frame = ttk.Frame(self.controls_frame)
@@ -245,7 +334,6 @@ class App(tk.Tk):
         self.model_combo.set("large-v3")
         self.model_combo.pack(side="left", fill="x", expand=True)
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_changed)
-        ToolTip(self.model_combo, "Whisper model size (larger = more accurate)")
 
         # VRAM info label
         self.vram_label = ttk.Label(self.controls_frame, text=MODEL_VRAM.get("large-v3", ""),
@@ -261,23 +349,19 @@ class App(tk.Tk):
         self.vad_check = ttk.Checkbutton(options_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
         self.vad_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.vad_check, "Voice Activity Detection filter")
 
         self.para_check = ttk.Checkbutton(options_frame, text="¶", onvalue=True, offvalue=False)
         self.para_check.state(("!alternate", "selected"))
         self.para_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.para_check, "Adaptive paragraph detection")
 
         self.type_check = ttk.Checkbutton(options_frame, text="⌨", onvalue=True, offvalue=False)
         self.type_check.state(("!alternate",))
         self.type_check.pack(side="left", padx=(0, 8))
-        ToolTip(self.type_check, "Auto-type to focused window")
 
         ttk.Label(options_frame, text="Dev:").pack(side="left", padx=(0, 2))
         self.device_combo = ttk.Combobox(options_frame, values=core.devices, state="readonly", width=6)
         self.device_combo.current(1)
         self.device_combo.pack(side="left")
-        ToolTip(self.device_combo, "Inference device (CUDA/CPU)")
 
         # === MEMORY, PATIENCE, TIMEOUT ===
         params_frame = ttk.Frame(self.controls_frame)
@@ -288,26 +372,27 @@ class App(tk.Tk):
         self.memory_spin = ttk.Spinbox(params_frame, from_=1, to=10, increment=1, state="readonly", width=4)
         self.memory_spin.set(3)
         self.memory_spin.pack(side="left", padx=(0, 8))
-        ToolTip(self.memory_spin, "Previous segments as context")
 
         ttk.Label(params_frame, text="Pat:").pack(side="left", padx=(0, 2))
         self.patience_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.patience_spin.set(5.0)
         self.patience_spin.pack(side="left", padx=(0, 8))
-        ToolTip(self.patience_spin, "Seconds before finalizing segment")
 
         ttk.Label(params_frame, text="Time:").pack(side="left", padx=(0, 2))
         self.timeout_spin = ttk.Spinbox(params_frame, from_=1.0, to=20.0, increment=0.5, state="readonly", width=4)
         self.timeout_spin.set(5.0)
         self.timeout_spin.pack(side="left")
-        ToolTip(self.timeout_spin, "Translation timeout (seconds)")
 
         # === TRANSLATE/PROOFREAD SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="Translate/Proofread", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        translate_header = ttk.Frame(self.controls_frame)
+        translate_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(translate_header, text="Translation", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        help_btn = ttk.Button(translate_header, text="?", width=2, command=lambda: HelpDialog.show(self, "translate"))
+        help_btn.pack(side="right")
         row += 1
 
         lang_frame = ttk.Frame(self.controls_frame)
@@ -318,21 +403,24 @@ class App(tk.Tk):
         self.source_combo = ttk.Combobox(lang_frame, values=["auto"] + core.sources, state="readonly", width=5)
         self.source_combo.current(0)
         self.source_combo.pack(side="left", padx=(0, 10))
-        ToolTip(self.source_combo, "Source language (auto-detect)")
 
         ttk.Label(lang_frame, text="Tgt:").pack(side="left", padx=(0, 2))
         self.target_combo = ttk.Combobox(lang_frame, values=["none"] + core.targets, state="readonly", width=5)
         self.target_combo.current(0)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
         self.target_combo.pack(side="left")
-        ToolTip(self.target_combo, "Target language for translation")
 
         # === AI SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="AI Processing", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        ai_header = ttk.Frame(self.controls_frame)
+        ai_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(ai_header, text="AI Processing", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        if self.ai_available:
+            help_btn = ttk.Button(ai_header, text="?", width=2, command=lambda: HelpDialog.show(self, "ai"))
+            help_btn.pack(side="right")
         row += 1
 
         ai_enable_frame = ttk.Frame(self.controls_frame)
@@ -345,7 +433,6 @@ class App(tk.Tk):
         else:
             self.ai_check.state(("disabled",))
         self.ai_check.pack(side="left", padx=(0, 5))
-        ToolTip(self.ai_check, "Enable AI-powered proofreading/translation")
 
         # AI Mode
         ai_mode_frame = ttk.Frame(self.controls_frame)
@@ -426,8 +513,13 @@ class App(tk.Tk):
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(10, 5))
         row += 1
 
-        ttk.Label(self.controls_frame, text="Text-to-Speech", font=('TkDefaultFont', 9, 'bold')).grid(
-            row=row, column=0, sticky="w", pady=(0, 3))
+        # Section header with help button
+        tts_header = ttk.Frame(self.controls_frame)
+        tts_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
+        ttk.Label(tts_header, text="Text-to-Speech", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        if self.tts_available:
+            help_btn = ttk.Button(tts_header, text="?", width=2, command=lambda: HelpDialog.show(self, "tts"))
+            help_btn.pack(side="right")
         row += 1
 
         tts_enable_frame = ttk.Frame(self.controls_frame)
@@ -440,7 +532,6 @@ class App(tk.Tk):
         else:
             self.tts_check.state(("disabled",))
         self.tts_check.pack(side="left", padx=(0, 5))
-        ToolTip(self.tts_check, "Enable text-to-speech for proofread output")
 
         # Voice reference
         tts_voice_frame = ttk.Frame(self.controls_frame)
@@ -454,7 +545,6 @@ class App(tk.Tk):
         if not self.tts_available:
             self.tts_browse_button.state(("disabled",))
         self.tts_browse_button.pack(side="left", padx=(0, 5))
-        ToolTip(self.tts_browse_button, "Upload reference voice audio for cloning")
 
         self.tts_clear_button = ttk.Button(tts_voice_frame, text="Clear", width=6, command=self.clear_voice)
         if not self.tts_available:
@@ -479,7 +569,6 @@ class App(tk.Tk):
         if not self.tts_available:
             self.tts_format_combo.state(("disabled",))
         self.tts_format_combo.pack(side="left")
-        ToolTip(self.tts_format_combo, "Audio file format")
 
         # TTS status
         self.tts_status_label = ttk.Label(self.controls_frame, text="", foreground="blue",
