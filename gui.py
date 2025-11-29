@@ -179,13 +179,28 @@ class App(tk.Tk):
         if not self.ai_available:
             self.ai_model_combo.state(("disabled",))
 
-        # AI Processing Interval
-        self.ai_interval_label = ttk.Label(self.bot_frame, text="Interval (min):")
+        # AI Processing Trigger Mode
+        self.ai_trigger_label = ttk.Label(self.bot_frame, text="Trigger:")
+        self.ai_trigger_combo = ttk.Combobox(self.bot_frame, values=["Time", "Words"], state="readonly", width=7)
+        self.ai_trigger_combo.current(0)  # Default to Time
+        self.ai_trigger_combo.bind("<<ComboboxSelected>>", self.on_trigger_changed)
+        if not self.ai_available:
+            self.ai_trigger_combo.state(("disabled",))
+
+        # AI Processing Interval (Time mode)
+        self.ai_interval_label = ttk.Label(self.bot_frame, text="min:")
         interval_values = [str(i) for i in range(1, 11)]  # 1-10 minutes
         self.ai_interval_combo = ttk.Combobox(self.bot_frame, values=interval_values, state="readonly", width=5)
         self.ai_interval_combo.current(1)  # Default to 2 minutes
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
+
+        # AI Processing Word Count (Words mode)
+        self.ai_words_label = ttk.Label(self.bot_frame, text="words:")
+        self.ai_words_spin = ttk.Spinbox(self.bot_frame, from_=50, to=500, increment=50, state="readonly", width=5)
+        self.ai_words_spin.set(150)  # Default to 150 words
+        if not self.ai_available:
+            self.ai_words_spin.state(("disabled",))
 
         self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
 
@@ -198,8 +213,11 @@ class App(tk.Tk):
         self.ai_mode_combo.pack(side="left", padx=(0, 5))
         self.ai_model_label.pack(side="left", padx=(5, 2))
         self.ai_model_combo.pack(side="left", padx=(0, 5))
-        self.ai_interval_label.pack(side="left", padx=(5, 2))
+        self.ai_trigger_label.pack(side="left", padx=(5, 2))
+        self.ai_trigger_combo.pack(side="left", padx=(0, 2))
+        self.ai_interval_label.pack(side="left", padx=(2, 2))
         self.ai_interval_combo.pack(side="left", padx=(0, 5))
+        # Don't pack words controls initially - they're shown/hidden by on_trigger_changed
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
@@ -246,6 +264,23 @@ class App(tk.Tk):
             self.ai_mode_combo.config(values=["Proofread", "Translate", "Proofread+Translate"])
             # Default to Proofread+Translate when translation is enabled
             self.ai_mode_combo.current(2)
+
+    def on_trigger_changed(self, event=None):
+        """Update visible controls based on trigger mode selection."""
+        trigger_mode = self.ai_trigger_combo.get()
+
+        if trigger_mode == "Time":
+            # Show time controls, hide word controls
+            self.ai_interval_label.pack(side="left", padx=(2, 2), before=self.prompt_label)
+            self.ai_interval_combo.pack(side="left", padx=(0, 5), before=self.prompt_label)
+            self.ai_words_label.pack_forget()
+            self.ai_words_spin.pack_forget()
+        else:  # Words
+            # Show word controls, hide time controls
+            self.ai_interval_label.pack_forget()
+            self.ai_interval_combo.pack_forget()
+            self.ai_words_label.pack(side="left", padx=(2, 2), before=self.prompt_label)
+            self.ai_words_spin.pack(side="left", padx=(0, 5), before=self.prompt_label)
 
     def refresh_mics(self):
         current = self.mic_combo.get()
@@ -325,10 +360,12 @@ class App(tk.Tk):
                 print(f"Failed to initialize AI processor: {e}")
                 ai_processor = None
 
-        # Get AI processing interval
+        # Get AI processing parameters
         ai_process_interval = int(self.ai_interval_combo.get()) if self.ai_available else 2
+        ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
+        ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval}, daemon=True).start()
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode}, daemon=True).start()
         self.starting()
         self.update_level()
 

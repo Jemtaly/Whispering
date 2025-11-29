@@ -30,7 +30,9 @@ class Settings:
             "ai_enabled": False,
             "ai_mode": "Proofread",
             "ai_model_index": 0,
-            "ai_process_interval": 2  # Minutes between AI processing
+            "ai_process_interval": 2,  # Minutes between AI processing
+            "ai_trigger_mode": "time",  # "time" or "words"
+            "ai_process_words": 150  # Words per processing batch
         }
         self.settings = self.load()
 
