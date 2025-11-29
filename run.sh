@@ -1,16 +1,14 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Find Python version in venv
-PYTHON_VERSION=$(ls "$SCRIPT_DIR/.venv/lib/" | grep python | head -1)
-VENV_SITE="$SCRIPT_DIR/.venv/lib/$PYTHON_VERSION/site-packages"
+# IMPORTANT: PyTorch comes with its own bundled CUDA libraries (cuDNN, cuBLAS, etc.)
+# DO NOT set LD_LIBRARY_PATH - let PyTorch find its own libraries
+# Uncomment the lines below ONLY if you get "libcublas.so not found" errors
 
-# IMPORTANT: PyTorch comes with its own bundled cuDNN
-# DO NOT add nvidia/cudnn to LD_LIBRARY_PATH - it causes version conflicts
-# Only add cublas if needed for CUDA operations
-if [ -d "$VENV_SITE/nvidia/cublas/lib" ]; then
-    export LD_LIBRARY_PATH="$VENV_SITE/nvidia/cublas/lib:$LD_LIBRARY_PATH"
-fi
+# Find Python version in venv (commented out for now)
+# PYTHON_VERSION=$(ls "$SCRIPT_DIR/.venv/lib/" | grep python | head -1)
+# VENV_SITE="$SCRIPT_DIR/.venv/lib/$PYTHON_VERSION/site-packages"
+# export LD_LIBRARY_PATH="$VENV_SITE/nvidia/cublas/lib:$LD_LIBRARY_PATH"
 
 # Prefer PulseAudio/PipeWire over ALSA for audio
 export SDL_AUDIODRIVER=pulse
