@@ -347,7 +347,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time"):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -401,11 +401,13 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
         last_process_time = time.time()  # Track when we last processed
+        last_activity_time = time.time()  # Track when we last received text
 
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
         MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
         PROCESS_INTERVAL_SECONDS = ai_process_interval * 60 if ai_trigger_mode == "time" else float('inf')
         PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
+        SILENCE_TIMEOUT = silence_timeout  # Flush after this many seconds of silence
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -415,6 +417,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 # Accumulate done text
                 if done_src:
                     accumulated_done += done_src
+                    last_activity_time = time.time()  # Update activity time when text arrives
 
                 # Determine if we should process accumulated text
                 # Multiple conditions - any one triggers processing:
@@ -430,17 +433,23 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 word_count = len(accumulated_done.split()) if accumulated_done else 0
                 word_threshold_reached = word_count >= PROCESS_WORD_COUNT
 
+                # Silence timeout trigger - flush if no activity for SILENCE_TIMEOUT seconds
+                silence_elapsed = time.time() - last_activity_time
+                silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
+
                 # Process if ANY of these conditions are met:
                 # 1. Normal case: 150+ chars AND paragraph break
                 # 2. Fallback case 1: 400+ chars (even without paragraph break)
                 # 3. Fallback case 2: Time threshold reached (when in time mode)
                 # 4. Fallback case 3: Word count threshold reached (when in words mode)
+                # 5. Fallback case 4: Silence timeout reached (no speech for X seconds)
                 should_process = (
                     accumulated_done and
                     ((has_min_chars and has_paragraph_break) or
                      has_max_chars or
                      time_threshold_reached or
-                     word_threshold_reached)
+                     word_threshold_reached or
+                     silence_threshold_reached)
                 )
 
                 if should_process:

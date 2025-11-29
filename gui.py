@@ -4,6 +4,7 @@
 import threading
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import filedialog
 
 import core
 from cmque import PairDeque, Queue
@@ -133,6 +134,19 @@ class App(tk.Tk):
         except Exception as e:
             print(f"AI features not available: {e}")
 
+        # Try to initialize TTS
+        self.tts_controller = None
+        self.tts_available = False
+        try:
+            from tts_controller import TTSController
+            self.tts_controller = TTSController(device="auto", output_dir="tts_output")
+            self.tts_controller.on_progress = self.on_tts_progress
+            self.tts_controller.on_complete = self.on_tts_complete
+            self.tts_controller.on_error = self.on_tts_error
+            self.tts_available = True
+        except Exception as e:
+            print(f"TTS features not available: {e}")
+
         # Create frames - two column layout
         self.controls_frame = ttk.Frame(self, padding="5")
 
@@ -148,7 +162,7 @@ class App(tk.Tk):
         # Translated/Proofread output (bottom)
         tl_label = ttk.Label(self.text_frame, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
         tl_label.grid(row=2, column=0, sticky="w", padx=5, pady=(5, 2))
-        self.tl_text = Text(self.text_frame)
+        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation)
         self.tl_text.grid(row=3, column=0, sticky="nsew")
 
         # Configure text_frame grid
@@ -380,6 +394,71 @@ class App(tk.Tk):
         self.prompt_entry = ttk.Entry(prompt_frame, state="normal")
         self.prompt_entry.pack(side="top", fill="x")
 
+        # === TTS SECTION ===
+        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(10, 5))
+        row += 1
+
+        ttk.Label(self.controls_frame, text="Text-to-Speech", font=('TkDefaultFont', 9, 'bold')).grid(
+            row=row, column=0, sticky="w", pady=(0, 3))
+        row += 1
+
+        tts_enable_frame = ttk.Frame(self.controls_frame)
+        tts_enable_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.tts_check = ttk.Checkbutton(tts_enable_frame, text="Enable TTS", onvalue=True, offvalue=False)
+        if self.tts_available:
+            self.tts_check.state(("!alternate",))
+        else:
+            self.tts_check.state(("disabled",))
+        self.tts_check.pack(side="left", padx=(0, 5))
+        ToolTip(self.tts_check, "Enable text-to-speech for proofread output")
+
+        # Voice reference
+        tts_voice_frame = ttk.Frame(self.controls_frame)
+        tts_voice_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(tts_voice_frame, text="Voice:").pack(side="left", padx=(0, 2))
+        self.tts_voice_label = ttk.Label(tts_voice_frame, text="Default", foreground="gray", width=15, anchor="w")
+        self.tts_voice_label.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.tts_browse_button = ttk.Button(tts_voice_frame, text="Browse", width=8, command=self.browse_voice)
+        if not self.tts_available:
+            self.tts_browse_button.state(("disabled",))
+        self.tts_browse_button.pack(side="left", padx=(0, 5))
+        ToolTip(self.tts_browse_button, "Upload reference voice audio for cloning")
+
+        self.tts_clear_button = ttk.Button(tts_voice_frame, text="Clear", width=6, command=self.clear_voice)
+        if not self.tts_available:
+            self.tts_clear_button.state(("disabled",))
+        self.tts_clear_button.pack(side="left")
+
+        # File output options
+        tts_output_frame = ttk.Frame(self.controls_frame)
+        tts_output_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(tts_output_frame, text="Output:").pack(side="left", padx=(0, 2))
+        self.tts_save_check = ttk.Checkbutton(tts_output_frame, text="Save to file", onvalue=True, offvalue=False)
+        if self.tts_available:
+            self.tts_save_check.state(("!alternate",))
+        else:
+            self.tts_save_check.state(("disabled",))
+        self.tts_save_check.pack(side="left", padx=(0, 10))
+
+        self.tts_format_combo = ttk.Combobox(tts_output_frame, values=["wav", "ogg"], state="readonly", width=5)
+        self.tts_format_combo.current(0)
+        if not self.tts_available:
+            self.tts_format_combo.state(("disabled",))
+        self.tts_format_combo.pack(side="left")
+        ToolTip(self.tts_format_combo, "Audio file format")
+
+        # TTS status
+        self.tts_status_label = ttk.Label(self.controls_frame, text="", foreground="blue",
+                                         wraplength=330, font=('TkDefaultFont', 8))
+        self.tts_status_label.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
         # === CONTROL BUTTON & LEVEL ===
         control_frame = ttk.Frame(self.controls_frame)
         control_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
@@ -405,14 +484,41 @@ class App(tk.Tk):
         self.level = [0]
         self.autotype_error_shown = False
 
+        # TTS session tracking
+        self.tts_session_text = ""  # Accumulate text for TTS
+        self.tts_session_id = None  # Current session ID
+
         # Apply loaded text visibility state
         if not self.text_visible:
             # Hide text frame and update button for minimal mode
             self.text_frame.grid_remove()
             self.hide_text_button.config(text="Show Text ▶")
 
+        # Load and apply TTS settings
+        if self.tts_available:
+            tts_enabled = self.settings.get("tts_enabled", False)
+            tts_save_file = self.settings.get("tts_save_file", False)
+
+            if tts_enabled:
+                self.tts_check.state(("selected",))
+            if tts_save_file:
+                self.tts_save_check.state(("selected",))
+
+        # Load and apply AI settings
+        if self.ai_available:
+            ai_enabled = self.settings.get("ai_enabled", False)
+            if ai_enabled:
+                self.ai_check.state(("selected",))
+
+        # Save settings on window close
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
+        # Accumulate for TTS (capture ALL speech, not just proofread)
+        if self.tts_available and "selected" in self.tts_check.state():
+            self.tts_session_text += text + " "
+
         if self.autotype_enabled and text:
             try:
                 import autotype
@@ -429,6 +535,35 @@ class App(tk.Tk):
                 if not self.autotype_error_shown:
                     self.autotype_error_shown = True
                     self.status_label.config(text="autotype.py not found")
+
+    def on_new_translation(self, text):
+        """Called when NEW translated/proofread text arrives. No longer used for TTS."""
+        # TTS now accumulates from raw transcription (on_new_transcription)
+        # so ALL speech is captured, not just what gets proofread
+        pass
+
+    def finalize_tts_session(self):
+        """Generate TTS audio from accumulated session text."""
+        if not self.tts_session_text.strip() or not self.tts_available:
+            return
+
+        # Check if we should save to file
+        save_to_file = "selected" in self.tts_save_check.state()
+
+        if save_to_file and self.tts_session_id:
+            file_format = self.tts_format_combo.get()
+            filename = f"tts_session_{self.tts_session_id}"
+
+            # Synthesize accumulated text to single file
+            self.tts_controller.synthesize_to_file(
+                text=self.tts_session_text.strip(),
+                output_filename=filename,
+                file_format=file_format,
+                async_mode=True
+            )
+
+        # Reset session
+        self.tts_session_text = ""
 
     def on_model_changed(self, event=None):
         """Update VRAM label when model changes."""
@@ -469,6 +604,49 @@ class App(tk.Tk):
                 self.ai_words_label.pack(side="left", padx=(5, 2))
                 self.ai_words_spin.pack(side="left")
 
+    def browse_voice(self):
+        """Browse and select a reference voice audio file."""
+        filename = filedialog.askopenfilename(
+            title="Select Reference Voice Audio",
+            filetypes=[
+                ("Audio Files", "*.wav *.mp3 *.ogg *.flac *.m4a"),
+                ("All Files", "*.*")
+            ]
+        )
+        if filename:
+            try:
+                self.tts_controller.set_reference_voice(filename)
+                # Show shortened filename
+                short_name = filename.split("/")[-1]
+                if len(short_name) > 20:
+                    short_name = short_name[:17] + "..."
+                self.tts_voice_label.config(text=short_name, foreground="black")
+                self.tts_status_label.config(text=f"Voice loaded: {short_name}")
+            except Exception as e:
+                self.tts_status_label.config(text=f"Error loading voice: {e}", foreground="red")
+
+    def clear_voice(self):
+        """Clear the reference voice and use default."""
+        if self.tts_controller:
+            self.tts_controller.set_reference_voice(None)
+            self.tts_voice_label.config(text="Default", foreground="gray")
+            self.tts_status_label.config(text="Using default voice")
+
+    def on_tts_progress(self, message: str):
+        """Called during TTS synthesis progress."""
+        self.after(0, lambda: self.tts_status_label.config(text=message, foreground="blue"))
+
+    def on_tts_complete(self, filepath: str):
+        """Called when TTS synthesis completes."""
+        filename = filepath.split("/")[-1]
+        self.after(0, lambda: self.tts_status_label.config(
+            text=f"✓ Saved: {filename}", foreground="green"))
+
+    def on_tts_error(self, error_msg: str):
+        """Called when TTS synthesis fails."""
+        self.after(0, lambda: self.tts_status_label.config(
+            text=f"TTS error: {error_msg}", foreground="red"))
+
     def toggle_text_display(self):
         """Toggle visibility of text panes."""
         if self.text_visible:
@@ -490,6 +668,29 @@ class App(tk.Tk):
         self.settings.set("text_visible", self.text_visible)
         self.settings.save()
 
+    def on_closing(self):
+        """Save settings before closing the window."""
+        # Save text visibility (already saved in toggle, but ensure it's current)
+        self.settings.set("text_visible", self.text_visible)
+
+        # Save TTS settings
+        if self.tts_available:
+            tts_enabled = "selected" in self.tts_check.state()
+            tts_save_file = "selected" in self.tts_save_check.state()
+            self.settings.set("tts_enabled", tts_enabled)
+            self.settings.set("tts_save_file", tts_save_file)
+
+        # Save AI settings
+        if self.ai_available:
+            ai_enabled = "selected" in self.ai_check.state()
+            self.settings.set("ai_enabled", ai_enabled)
+
+        # Persist to disk
+        self.settings.save()
+
+        # Close the window
+        self.destroy()
+
     def refresh_mics(self):
         current = self.mic_combo.get()
         self.mic_list = core.get_mic_names()
@@ -507,6 +708,11 @@ class App(tk.Tk):
         self.status_label.config(text="")
         self.autotype_error_shown = False  # Reset error flag
         self.control_button.config(text="Starting...", command=None, state="disabled")
+
+        # Start new TTS session
+        import time
+        self.tts_session_id = time.strftime("%Y%m%d_%H%M%S")
+        self.tts_session_text = ""
         # Get mic index: use smart default or stored index
         combo_idx = self.mic_combo.current()
         if combo_idx == 0:
@@ -598,6 +804,9 @@ class App(tk.Tk):
         if self.ready[0] is None:
             self.control_button.config(text="Start", command=self.start, state="normal")
             self.level_bar['value'] = 0
+
+            # Finalize TTS session when stopping completes
+            self.finalize_tts_session()
             return
         self.after(100, self.stopping)
 

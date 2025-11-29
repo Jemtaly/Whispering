@@ -60,6 +60,9 @@ models/
 *.mp3
 recordings/
 
+# TTS output files
+tts_output/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

@@ -6,6 +6,7 @@ Real-time speech transcription and translation using [faster-whisper](https://gi
 
 - **Real-time transcription** with iterative refinement for accuracy
 - **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
+- **Text-to-Speech (TTS)** - convert transcribed text back to audio with voice cloning support
 - **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
 - **Editable transcript** - manually edit text and add paragraph breaks
@@ -31,6 +32,19 @@ Whispering now includes powerful AI-powered text processing capabilities:
 - **Processing Modes** - Proofread only, translate only, or combined processing
 
 See [AI_SETUP.md](AI_SETUP.md) for complete setup instructions and configuration options.
+
+## Text-to-Speech (TTS) Features (Optional)
+
+Convert your transcribed speech back to audio using AI voice synthesis:
+
+- **Session-based audio generation** - Creates one smooth audio file per recording session
+- **Voice cloning support** - Upload reference audio to clone any voice
+- **Multiple output formats** - WAV (lossless) or OGG (compressed)
+- **Automatic text accumulation** - Captures all speech from start to stop
+- **CUDA acceleration** - Fast synthesis on NVIDIA GPUs
+- **ChatterboxTTS integration** - High-quality neural voice synthesis
+
+See [INSTALL_TTS.md](INSTALL_TTS.md) for installation instructions.
 
 ## Requirements
 
