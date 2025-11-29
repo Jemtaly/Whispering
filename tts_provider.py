@@ -134,33 +134,15 @@ class TTSProvider:
             raise ValueError("Cannot synthesize empty text")
 
         try:
-            # Generate audio
-            # Note: ChatterboxTTS API parameters vary by version
-            # Using minimal parameters that should work across versions
-            if self.model_type == "multilingual":
-                # Try with all optional parameters as kwargs
-                kwargs = {"text": text}
-                if reference_audio_path:
-                    kwargs["audio_prompt_path"] = reference_audio_path
-                if language:
-                    kwargs["language"] = language
-                # Try cfg_weight (common diffusion param) or skip if not supported
-                try:
-                    audio = self.model.generate(**kwargs, exaggeration=exaggeration, cfg_weight=cfg)
-                except TypeError:
-                    # Fallback: try without cfg_weight
-                    audio = self.model.generate(**kwargs, exaggeration=exaggeration)
-            else:
-                # Standard model
-                kwargs = {"text": text}
-                if reference_audio_path:
-                    kwargs["audio_prompt_path"] = reference_audio_path
-                # Try cfg_weight or skip if not supported
-                try:
-                    audio = self.model.generate(**kwargs, exaggeration=exaggeration, cfg_weight=cfg)
-                except TypeError:
-                    # Fallback: try without cfg_weight
-                    audio = self.model.generate(**kwargs, exaggeration=exaggeration)
+            # Generate audio using ChatterboxTTS API
+            # API: generate(text, repetition_penalty, min_p, top_p, audio_prompt_path, exaggeration, cfg_weight, temperature)
+            audio = self.model.generate(
+                text=text,
+                audio_prompt_path=reference_audio_path,
+                exaggeration=exaggeration,
+                cfg_weight=cfg,
+                temperature=0.8,  # Default from API
+            )
 
             # Convert to numpy array if needed
             if isinstance(audio, torch.Tensor):
