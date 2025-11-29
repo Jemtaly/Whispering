@@ -294,22 +294,90 @@ class App(tk.Tk):
             self.ai_words_spin.pack(side="left", padx=(0, 5), before=self.prompt_label)
 
     def toggle_text_display(self):
-        """Toggle visibility of text display widgets."""
+        """Toggle visibility of text display widgets and non-essential controls."""
         if self.text_visible:
-            # Hide text displays
+            # MINIMAL MODE: Hide text displays and non-essential controls
             self.ts_text.grid_remove()
             self.tl_text.grid_remove()
             self.hide_text_button.config(text="Show Text ▲")
             self.text_visible = False
-            # Adjust minimum height when text is hidden
-            self.minsize(800, 120)
+
+            # Hide non-essential controls in top frame
+            self.model_label.pack_forget()
+            self.model_combo.pack_forget()
+            self.vad_check.pack_forget()
+            self.para_check.pack_forget()
+            self.device_label.pack_forget()
+            self.device_combo.pack_forget()
+            self.memory_label.pack_forget()
+            self.memory_spin.pack_forget()
+            self.patience_label.pack_forget()
+            self.patience_spin.pack_forget()
+            self.timeout_label.pack_forget()
+            self.timeout_spin.pack_forget()
+
+            # Hide non-essential controls in bottom frame
+            self.source_label.pack_forget()
+            self.source_combo.pack_forget()
+            self.target_label.pack_forget()
+            self.target_combo.pack_forget()
+            self.ai_check.pack_forget()
+            self.ai_mode_label.pack_forget()
+            self.ai_mode_combo.pack_forget()
+            self.ai_model_label.pack_forget()
+            self.ai_model_combo.pack_forget()
+            self.ai_trigger_label.pack_forget()
+            self.ai_trigger_combo.pack_forget()
+            self.ai_interval_label.pack_forget()
+            self.ai_interval_combo.pack_forget()
+            self.ai_words_label.pack_forget()
+            self.ai_words_spin.pack_forget()
+            self.prompt_label.pack_forget()
+            self.prompt_entry.pack_forget()
+
+            # Adjust minimum size for minimal mode
+            self.minsize(600, 80)
+
         else:
-            # Show text displays
+            # FULL MODE: Show text displays and all controls
             self.ts_text.grid()
             self.tl_text.grid()
             self.hide_text_button.config(text="Hide Text ▼")
             self.text_visible = True
-            # Restore minimum height when text is shown
+
+            # Restore top frame controls (after type_check, before device_label)
+            self.model_label.pack(side="left", padx=(5, 5), after=self.hide_text_button)
+            self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True, after=self.model_label)
+            self.vad_check.pack(side="left", padx=(0, 5), after=self.model_combo)
+            self.para_check.pack(side="left", padx=(0, 5), after=self.vad_check)
+            self.type_check.pack(side="left", padx=(0, 5), after=self.para_check)
+            self.device_label.pack(side="left", padx=(5, 5), after=self.type_check)
+            self.device_combo.pack(side="left", padx=(0, 5), after=self.device_label)
+            self.memory_label.pack(side="left", padx=(5, 5), after=self.device_combo)
+            self.memory_spin.pack(side="left", padx=(0, 5), after=self.memory_label)
+            self.patience_label.pack(side="left", padx=(5, 5), after=self.memory_spin)
+            self.patience_spin.pack(side="left", padx=(0, 5), after=self.patience_label)
+            self.timeout_label.pack(side="left", padx=(5, 5), after=self.patience_spin)
+            self.timeout_spin.pack(side="left", padx=(0, 5), after=self.timeout_label)
+
+            # Restore bottom frame controls (before status_label, after nothing/left side)
+            self.source_label.pack(side="left", padx=(5, 5), before=self.status_label)
+            self.source_combo.pack(side="left", padx=(0, 5), before=self.status_label)
+            self.target_label.pack(side="left", padx=(5, 5), before=self.status_label)
+            self.target_combo.pack(side="left", padx=(0, 5), before=self.status_label)
+            self.ai_check.pack(side="left", padx=(5, 5), before=self.status_label)
+            self.ai_mode_label.pack(side="left", padx=(0, 2), before=self.status_label)
+            self.ai_mode_combo.pack(side="left", padx=(0, 5), before=self.status_label)
+            self.ai_model_label.pack(side="left", padx=(5, 2), before=self.status_label)
+            self.ai_model_combo.pack(side="left", padx=(0, 5), before=self.status_label)
+            self.ai_trigger_label.pack(side="left", padx=(5, 2), before=self.status_label)
+            self.ai_trigger_combo.pack(side="left", padx=(0, 2), before=self.status_label)
+            self.ai_interval_label.pack(side="left", padx=(2, 2), before=self.status_label)
+            self.ai_interval_combo.pack(side="left", padx=(0, 5), before=self.status_label)
+            self.prompt_label.pack(side="left", padx=(5, 5), before=self.status_label)
+            self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True, before=self.status_label)
+
+            # Restore minimum size
             self.minsize(800, 200)
 
     def refresh_mics(self):
