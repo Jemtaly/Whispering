@@ -69,6 +69,10 @@ class App(tk.Tk):
         super().__init__()
         self.title("Whispering")
         self.autotype_enabled = False  # Track autotype state
+        self.text_visible = True  # Track text display visibility
+
+        # Set minimum window size to prevent controls from disappearing
+        self.minsize(800, 200)  # Minimum width=800px, height=200px
 
         # Load settings
         self.settings = Settings()
@@ -103,6 +107,7 @@ class App(tk.Tk):
         self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
         self.model_combo = ttk.Combobox(self.top_frame, values=core.models, state="normal")
         self.model_combo.set("large-v3")  # default to large-v3
+        self.hide_text_button = ttk.Button(self.top_frame, text="Hide Text ▼", width=12, command=self.toggle_text_display)
         self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
         self.para_check = ttk.Checkbutton(self.top_frame, text="¶", onvalue=True, offvalue=False)  # Pilcrow symbol for paragraph
@@ -124,6 +129,7 @@ class App(tk.Tk):
         self.mic_label.pack(side="left", padx=(5, 5))
         self.mic_combo.pack(side="left", padx=(0, 5))
         self.mic_button.pack(side="left", padx=(0, 5))
+        self.hide_text_button.pack(side="left", padx=(5, 5))
         self.model_label.pack(side="left", padx=(5, 5))
         self.model_combo.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.vad_check.pack(side="left", padx=(0, 5))
@@ -203,7 +209,16 @@ class App(tk.Tk):
             self.ai_words_spin.state(("disabled",))
 
         self.control_button = ttk.Button(self.bot_frame, text="Start", command=self.start, state="normal")
+        self.level_label = ttk.Label(self.bot_frame, text="Level:")
+        self.level_bar = ttk.Progressbar(self.bot_frame, length=100, mode='determinate', maximum=100)
+        self.status_label = ttk.Label(self.bot_frame, text="", foreground="red")
 
+        # Pack critical controls from right to left - they stay visible when window is narrow
+        self.level_bar.pack(side="right", padx=(2, 5))
+        self.level_label.pack(side="right", padx=(5, 0))
+        self.control_button.pack(side="right", padx=(5, 5))
+
+        # Pack other controls from left to right
         self.source_label.pack(side="left", padx=(5, 5))
         self.source_combo.pack(side="left", padx=(0, 5))
         self.target_label.pack(side="left", padx=(5, 5))
@@ -220,12 +235,8 @@ class App(tk.Tk):
         # Don't pack words controls initially - they're shown/hidden by on_trigger_changed
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
-        self.control_button.pack(side="left", padx=(5, 5))
-        self.level_label = ttk.Label(self.bot_frame, text="Level:")
-        self.level_label.pack(side="left", padx=(5, 0))
-        self.level_bar = ttk.Progressbar(self.bot_frame, length=100, mode='determinate', maximum=100)
-        self.level_bar.pack(side="left", padx=(2, 5))
-        self.status_label = ttk.Label(self.bot_frame, text="", foreground="red")
+
+        # Status label fills remaining space
         self.status_label.pack(side="left", padx=(5, 5), fill="x", expand=True)
         self.ready = [None]
         self.error = [None]
@@ -281,6 +292,25 @@ class App(tk.Tk):
             self.ai_interval_combo.pack_forget()
             self.ai_words_label.pack(side="left", padx=(2, 2), before=self.prompt_label)
             self.ai_words_spin.pack(side="left", padx=(0, 5), before=self.prompt_label)
+
+    def toggle_text_display(self):
+        """Toggle visibility of text display widgets."""
+        if self.text_visible:
+            # Hide text displays
+            self.ts_text.grid_remove()
+            self.tl_text.grid_remove()
+            self.hide_text_button.config(text="Show Text ▲")
+            self.text_visible = False
+            # Adjust minimum height when text is hidden
+            self.minsize(800, 120)
+        else:
+            # Show text displays
+            self.ts_text.grid()
+            self.tl_text.grid()
+            self.hide_text_button.config(text="Hide Text ▼")
+            self.text_visible = True
+            # Restore minimum height when text is shown
+            self.minsize(800, 200)
 
     def refresh_mics(self):
         current = self.mic_combo.get()
