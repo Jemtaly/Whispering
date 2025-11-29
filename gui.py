@@ -515,6 +515,10 @@ class App(tk.Tk):
 
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
+        # Accumulate for TTS (capture ALL speech, not just proofread)
+        if self.tts_available and "selected" in self.tts_check.state():
+            self.tts_session_text += text + " "
+
         if self.autotype_enabled and text:
             try:
                 import autotype
@@ -533,16 +537,10 @@ class App(tk.Tk):
                     self.status_label.config(text="autotype.py not found")
 
     def on_new_translation(self, text):
-        """Called when NEW translated/proofread text arrives. Accumulates for session-based TTS."""
-        if not text or not self.tts_available or not self.tts_controller:
-            return
-
-        # Check if TTS is enabled
-        if "selected" not in self.tts_check.state():
-            return
-
-        # Accumulate text for this session
-        self.tts_session_text += text + " "
+        """Called when NEW translated/proofread text arrives. No longer used for TTS."""
+        # TTS now accumulates from raw transcription (on_new_transcription)
+        # so ALL speech is captured, not just what gets proofread
+        pass
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
