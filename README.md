@@ -19,6 +19,7 @@ cd Whispering
 - **Transcript logging** - automatic session-based logging to timestamped files in `log_output/`
 - **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
+- **Copy/Cut to clipboard** - easily transfer transcribed text to other applications
 - **Editable transcript** - manually edit text and add paragraph breaks
 - **Two-column GUI layout** - organized controls with labeled output windows
 - **Minimal mode** - hide text displays for compact interface
@@ -390,6 +391,21 @@ Both text windows (Whisper Output and Translated/Proofread Output) are fully edi
 - Select and delete text
 - Copy/paste within the windows
 - Make corrections to transcription or translation in real-time
+
+**Copy/Cut to other applications:**
+
+Each text window has **Copy** and **Cut** buttons that allow you to transfer text to other applications:
+- **Copy** - Copies the text to clipboard (text remains in window)
+- **Cut** - Copies the text to clipboard and clears the window
+
+**Workflow for typing in unfocused windows:**
+1. Start transcription and speak your text
+2. Click **Cut** to copy the text and clear the window
+3. Switch to your target application (browser, notepad, etc.)
+4. Paste with Ctrl+V (Cmd+V on macOS)
+5. Return to Whispering and continue speaking - new text will appear in the cleared window
+
+This approach lets you dictate to multiple applications without losing focus on what you're reading or working on.
 
 **Check your setup:**
 

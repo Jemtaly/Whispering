@@ -272,21 +272,33 @@ class App(tk.Tk):
         self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
         self.ts_text.grid(row=1, column=0, sticky="nsew")
 
+        # Whisper text control buttons
+        ts_buttons_frame = ttk.Frame(self.text_frame)
+        ts_buttons_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=(2, 5))
+        ttk.Button(ts_buttons_frame, text="Copy", command=self.copy_whisper_text, width=10).pack(side="left", padx=(0, 5))
+        ttk.Button(ts_buttons_frame, text="Cut", command=self.cut_whisper_text, width=10).pack(side="left")
+
         # Translated/Proofread output (bottom) - header frame with label and count
         tl_header = ttk.Frame(self.text_frame)
-        tl_header.grid(row=2, column=0, sticky="ew", padx=5, pady=(5, 2))
+        tl_header.grid(row=3, column=0, sticky="ew", padx=5, pady=(5, 2))
         tl_label = ttk.Label(tl_header, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
         tl_label.pack(side="left")
         self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.tl_count_label.pack(side="right")
 
         self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
-        self.tl_text.grid(row=3, column=0, sticky="nsew")
+        self.tl_text.grid(row=4, column=0, sticky="nsew")
+
+        # Translation text control buttons
+        tl_buttons_frame = ttk.Frame(self.text_frame)
+        tl_buttons_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=(2, 5))
+        ttk.Button(tl_buttons_frame, text="Copy", command=self.copy_translation_text, width=10).pack(side="left", padx=(0, 5))
+        ttk.Button(tl_buttons_frame, text="Cut", command=self.cut_translation_text, width=10).pack(side="left")
 
         # Configure text_frame grid
         self.text_frame.columnconfigure(0, weight=1)
         self.text_frame.rowconfigure(1, weight=1)
-        self.text_frame.rowconfigure(3, weight=1)
+        self.text_frame.rowconfigure(4, weight=1)
 
         # Grid layout: controls in column 0, text frame in column 1
         self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
@@ -679,6 +691,55 @@ class App(tk.Tk):
         char_count = len(text)
         word_count = len(text.split()) if text else 0
         self.tl_count_label.config(text=f"{char_count} chars, {word_count} words")
+
+    def copy_whisper_text(self):
+        """Copy Whisper output text to clipboard."""
+        text = self.ts_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.status_label.config(text="✓ Copied Whisper text to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to copy", foreground="orange")
+
+    def cut_whisper_text(self):
+        """Cut Whisper output text (copy and clear)."""
+        text = self.ts_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.ts_text.clear()
+            self.status_label.config(text="✓ Cut Whisper text to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to cut", foreground="orange")
+
+    def copy_translation_text(self):
+        """Copy Translation/Proofread output text to clipboard."""
+        text = self.tl_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.status_label.config(text="✓ Copied translation to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to copy", foreground="orange")
+
+    def cut_translation_text(self):
+        """Cut Translation/Proofread output text (copy and clear)."""
+        text = self.tl_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.tl_text.clear()
+            self.status_label.config(text="✓ Cut translation to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to cut", foreground="orange")
+
+    def _copy_to_clipboard(self, text):
+        """Copy text to system clipboard using tkinter."""
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.update()  # Required for clipboard to persist
+            return True
+        except Exception as e:
+            self.status_label.config(text=f"Clipboard error: {e}", foreground="red")
+            return False
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
