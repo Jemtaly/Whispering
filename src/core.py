@@ -460,6 +460,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
+        last_curr_src = ""  # Track last curr_src for exit processing
         last_process_time = time.time()  # Track when we last processed
         last_activity_time = time.time()  # Track when we last received text
         start_time = time.time()  # Track total runtime for auto-stop
@@ -473,6 +474,9 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
+
+            # Track last curr_src for exit processing
+            last_curr_src = curr_src
 
             # Check for auto-stop (5 minutes)
             if time.time() - start_time >= AUTO_STOP_DURATION:
@@ -643,8 +647,15 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 tlres_queue.put((done_tgt, curr_tgt))
 
         # Process any remaining accumulated text on exit
-        if ai_processor and accumulated_done and accumulated_done.strip():
-            print(f"[DEBUG] EXIT: Processing remaining text ({len(accumulated_done)} chars)", flush=True)
+        # Combine accumulated_done with last_curr_src to ensure nothing is lost
+        final_text = accumulated_done
+        if last_curr_src and last_curr_src.strip():
+            print(f"[DEBUG] EXIT: Found curr_src text: '{last_curr_src.strip()}'", flush=True)
+            final_text = accumulated_done + last_curr_src
+
+        if ai_processor and final_text and final_text.strip():
+            print(f"[DEBUG] EXIT: Processing remaining text ({len(final_text)} chars)", flush=True)
+            print(f"[DEBUG] EXIT: Text = '{final_text[:200]}'...", flush=True)
             if prres_queue is not None and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                 # Make TWO separate calls for proofread+translate mode
                 print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
@@ -657,7 +668,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                     target_lang=None
                 )
 
-                proofread_text, _ = ai_translate(accumulated_done, proofread_processor)
+                proofread_text, _ = ai_translate(final_text, proofread_processor)
                 print(f"[DEBUG] EXIT: Proofread result: '{proofread_text[:100]}'", flush=True)
 
                 translate_processor = AITextProcessor(
@@ -680,7 +691,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
             else:
                 # Single AI call
                 print(f"[DEBUG] EXIT: Using single AI call", flush=True)
-                final_tgt, _ = ai_translate(accumulated_done, ai_processor)
+                final_tgt, _ = ai_translate(final_text, ai_processor)
                 tlres_queue.put((final_tgt, ""))
 
         tlres_queue.put(None)

@@ -1045,6 +1045,7 @@ class App(tk.Tk):
 
             # Adjust minimum size for minimal mode (never below 400x950)
             self.minsize(400, 950)
+            self.maxsize(10000, 950)  # Limit max height to 950px
 
             # Resize window to minimal width
             self.geometry("400x950")
@@ -1060,6 +1061,7 @@ class App(tk.Tk):
 
             # Restore minimum size for full mode
             self.minsize(900, 950)
+            self.maxsize(10000, 950)  # Limit max height to 950px
 
             # Resize window to show both columns (max height 950px)
             self.geometry("900x950")
