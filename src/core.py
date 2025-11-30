@@ -517,24 +517,58 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
                     if to_process:
                         # Process with AI
-                        processed, ai_error = ai_translate(to_process, ai_processor)
-                        if ai_error:
-                            # Log error to console but continue with result
-                            print(f"AI Error: {ai_error}", flush=True)
-
-                        # Determine separator based on context
-                        separator = '\n\n' if has_paragraph_break else ' '
-                        last_process_time = time.time()  # Reset timer after processing
-
-                        # Parse output if using proofread+translate mode
                         if prres_queue and ai_processor and ai_processor.mode == "proofread_translate":
-                            proofread_text, translate_text = parse_ai_proofread_translate(processed)
+                            # Make TWO separate calls for proofread+translate mode
+                            # First call: Proofread
+                            from ai_config import AIConfig
+                            from ai_provider import AITextProcessor
+
+                            config = AIConfig()
+                            proofread_processor = AITextProcessor(
+                                config=config,
+                                model_id=ai_processor.provider.model_id,
+                                mode="proofread",
+                                source_lang=ai_processor.source_lang,
+                                target_lang=None
+                            )
+
+                            proofread_text, pr_error = ai_translate(to_process, proofread_processor)
+                            if pr_error:
+                                print(f"AI Proofread Error: {pr_error}", flush=True)
+
+                            # Second call: Translate the proofread text
+                            translate_processor = AITextProcessor(
+                                config=config,
+                                model_id=ai_processor.provider.model_id,
+                                mode="translate",
+                                source_lang=ai_processor.source_lang,
+                                target_lang=ai_processor.target_lang
+                            )
+
+                            translate_text, tr_error = ai_translate(proofread_text, translate_processor)
+                            if tr_error:
+                                print(f"AI Translate Error: {tr_error}", flush=True)
+
+                            # Determine separator based on context
+                            separator = '\n\n' if has_paragraph_break else ' '
+                            last_process_time = time.time()  # Reset timer after processing
+
                             # Send proofread to pr queue, translation to tl queue
                             if proofread_text:
                                 prres_queue.put((proofread_text + separator, ""))
                             if translate_text:
                                 tlres_queue.put((translate_text + separator, ""))
                         else:
+                            # Single AI call (proofread-only or translate-only)
+                            processed, ai_error = ai_translate(to_process, ai_processor)
+                            if ai_error:
+                                # Log error to console but continue with result
+                                print(f"AI Error: {ai_error}", flush=True)
+
+                            # Determine separator based on context
+                            separator = '\n\n' if has_paragraph_break else ' '
+                            last_process_time = time.time()  # Reset timer after processing
+
                             # Send the NEW processed chunk - ONLY send when we have processed text
                             tlres_queue.put((processed + separator, ""))
             else:
@@ -563,15 +597,39 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         # Process any remaining accumulated text on exit
         if ai_processor and accumulated_done and accumulated_done.strip():
-            final_tgt, _ = ai_translate(accumulated_done, ai_processor)
-            # Parse output if using proofread+translate mode
             if prres_queue and ai_processor.mode == "proofread_translate":
-                proofread_text, translate_text = parse_ai_proofread_translate(final_tgt)
+                # Make TWO separate calls for proofread+translate mode
+                from ai_config import AIConfig
+                from ai_provider import AITextProcessor
+
+                config = AIConfig()
+                proofread_processor = AITextProcessor(
+                    config=config,
+                    model_id=ai_processor.provider.model_id,
+                    mode="proofread",
+                    source_lang=ai_processor.source_lang,
+                    target_lang=None
+                )
+
+                proofread_text, _ = ai_translate(accumulated_done, proofread_processor)
+
+                translate_processor = AITextProcessor(
+                    config=config,
+                    model_id=ai_processor.provider.model_id,
+                    mode="translate",
+                    source_lang=ai_processor.source_lang,
+                    target_lang=ai_processor.target_lang
+                )
+
+                translate_text, _ = ai_translate(proofread_text, translate_processor)
+
                 if proofread_text:
                     prres_queue.put((proofread_text, ""))
                 if translate_text:
                     tlres_queue.put((translate_text, ""))
             else:
+                # Single AI call
+                final_tgt, _ = ai_translate(accumulated_done, ai_processor)
                 tlres_queue.put((final_tgt, ""))
 
         tlres_queue.put(None)
