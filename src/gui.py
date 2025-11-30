@@ -39,9 +39,9 @@ Pat: Patience seconds (wait time before finalizing segment)
 
 Time: Translation timeout seconds""",
 
-        "translate": """Src: Source language (auto=detect, or select specific)
+        "translate": """Source: Source language (auto=detect, or select specific)
 
-Tgt: Target language (none=disabled, or select for Google Translate)
+Target: Target language (none=disabled, or select for Google Translate)
 
 Note: AI Processing overrides Google Translate when enabled.""",
 
@@ -276,60 +276,40 @@ class App(tk.Tk):
         self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
         self.ts_text.grid(row=1, column=0, sticky="nsew")
 
-        # Whisper text control buttons
-        ts_buttons_frame = ttk.Frame(self.text_frame)
-        ts_buttons_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=(2, 5))
-        ttk.Button(ts_buttons_frame, text="Copy", command=self.copy_whisper_text, width=10).pack(side="left", padx=(0, 5))
-        ttk.Button(ts_buttons_frame, text="Cut", command=self.cut_whisper_text, width=10).pack(side="left")
-
         # Proofread output (middle) - header frame with label and count
         pr_header = ttk.Frame(self.text_frame)
-        pr_header.grid(row=3, column=0, sticky="ew", padx=5, pady=(5, 2))
+        pr_header.grid(row=2, column=0, sticky="ew", padx=5, pady=(5, 2))
         pr_label = ttk.Label(pr_header, text="Proofread Output", font=('TkDefaultFont', 9, 'bold'))
         pr_label.pack(side="left")
         self.pr_count_label = ttk.Label(pr_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.pr_count_label.pack(side="right")
 
         self.pr_text = Text(self.text_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
-        self.pr_text.grid(row=4, column=0, sticky="nsew")
-
-        # Proofread text control buttons
-        pr_buttons_frame = ttk.Frame(self.text_frame)
-        pr_buttons_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=(2, 5))
-        ttk.Button(pr_buttons_frame, text="Copy", command=self.copy_proofread_text, width=10).pack(side="left", padx=(0, 5))
-        ttk.Button(pr_buttons_frame, text="Cut", command=self.cut_proofread_text, width=10).pack(side="left")
+        self.pr_text.grid(row=3, column=0, sticky="nsew")
 
         # Hide proofread window by default (only show when AI proofread+translate is active)
         pr_header.grid_remove()
         self.pr_text.grid_remove()
-        pr_buttons_frame.grid_remove()
 
         # Translation output (bottom) - header frame with label and count
         tl_header = ttk.Frame(self.text_frame)
-        tl_header.grid(row=6, column=0, sticky="ew", padx=5, pady=(5, 2))
+        tl_header.grid(row=4, column=0, sticky="ew", padx=5, pady=(5, 2))
         tl_label = ttk.Label(tl_header, text="Translation Output", font=('TkDefaultFont', 9, 'bold'))
         tl_label.pack(side="left")
         self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.tl_count_label.pack(side="right")
 
         self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
-        self.tl_text.grid(row=7, column=0, sticky="nsew")
-
-        # Translation text control buttons
-        tl_buttons_frame = ttk.Frame(self.text_frame)
-        tl_buttons_frame.grid(row=8, column=0, sticky="ew", padx=5, pady=(2, 5))
-        ttk.Button(tl_buttons_frame, text="Copy", command=self.copy_translation_text, width=10).pack(side="left", padx=(0, 5))
-        ttk.Button(tl_buttons_frame, text="Cut", command=self.cut_translation_text, width=10).pack(side="left")
+        self.tl_text.grid(row=5, column=0, sticky="nsew")
 
         # Store references to show/hide proofread window dynamically
         self.pr_header = pr_header
-        self.pr_buttons_frame = pr_buttons_frame
 
         # Configure text_frame grid
         self.text_frame.columnconfigure(0, weight=1)
         self.text_frame.rowconfigure(1, weight=1)  # Whisper
-        self.text_frame.rowconfigure(4, weight=1)  # Proofread
-        self.text_frame.rowconfigure(7, weight=1)  # Translation
+        self.text_frame.rowconfigure(3, weight=1)  # Proofread
+        self.text_frame.rowconfigure(5, weight=1)  # Translation
 
         # Grid layout: controls in column 0, text frame in column 1
         self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
@@ -417,7 +397,7 @@ class App(tk.Tk):
 
         # === MEMORY, PATIENCE, TIMEOUT ===
         params_frame = ttk.Frame(self.controls_frame)
-        params_frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        params_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
         ttk.Label(params_frame, text="Mem:").pack(side="left", padx=(0, 2))
@@ -435,8 +415,18 @@ class App(tk.Tk):
         self.timeout_spin.set(5.0)
         self.timeout_spin.pack(side="left")
 
+        # Whisper output Copy/Cut buttons with count
+        whisper_buttons_frame = ttk.Frame(self.controls_frame)
+        whisper_buttons_frame.grid(row=row, column=0, sticky="ew", pady=(5, 0))
+        row += 1
+
+        ttk.Button(whisper_buttons_frame, text="Copy Whisper", command=self.copy_whisper_text, width=15).pack(side="left", padx=(0, 5))
+        ttk.Button(whisper_buttons_frame, text="Cut Whisper", command=self.cut_whisper_text, width=15).pack(side="left", padx=(0, 5))
+        self.whisper_count_button = ttk.Label(whisper_buttons_frame, text="0c, 0w", foreground="blue", font=('TkDefaultFont', 8))
+        self.whisper_count_button.pack(side="left")
+
         # === TRANSLATE/PROOFREAD SECTION ===
-        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(5, 5))
         row += 1
 
         # Section header with help button
@@ -448,19 +438,29 @@ class App(tk.Tk):
         row += 1
 
         lang_frame = ttk.Frame(self.controls_frame)
-        lang_frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        lang_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(lang_frame, text="Src:").pack(side="left", padx=(0, 2))
+        ttk.Label(lang_frame, text="Source:").pack(side="left", padx=(0, 2))
         self.source_combo = ttk.Combobox(lang_frame, values=["auto"] + core.sources, state="readonly", width=5)
         self.source_combo.current(0)
         self.source_combo.pack(side="left", padx=(0, 10))
 
-        ttk.Label(lang_frame, text="Tgt:").pack(side="left", padx=(0, 2))
+        ttk.Label(lang_frame, text="Target:").pack(side="left", padx=(0, 2))
         self.target_combo = ttk.Combobox(lang_frame, values=["none"] + core.targets, state="readonly", width=5)
         self.target_combo.current(0)
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_changed)
         self.target_combo.pack(side="left")
+
+        # Translation output Copy/Cut buttons with count
+        translation_buttons_frame = ttk.Frame(self.controls_frame)
+        translation_buttons_frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        row += 1
+
+        ttk.Button(translation_buttons_frame, text="Copy Translation", command=self.copy_translation_text, width=15).pack(side="left", padx=(0, 5))
+        ttk.Button(translation_buttons_frame, text="Cut Translation", command=self.cut_translation_text, width=15).pack(side="left", padx=(0, 5))
+        self.translation_count_button = ttk.Label(translation_buttons_frame, text="0c, 0w", foreground="blue", font=('TkDefaultFont', 8))
+        self.translation_count_button.pack(side="left")
 
         # === AI SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(0, 5))
@@ -497,6 +497,7 @@ class App(tk.Tk):
         if not self.ai_available:
             self.ai_mode_combo.state(("disabled",))
         self.ai_mode_combo.pack(side="left", fill="x", expand=True)
+        self.ai_mode_combo.bind("<<ComboboxSelected>>", self.on_ai_mode_changed)
 
         # AI Model
         ai_model_frame = ttk.Frame(self.controls_frame)
@@ -551,6 +552,21 @@ class App(tk.Tk):
         self.ai_words_spin.set(150)
         if not self.ai_available:
             self.ai_words_spin.state(("disabled",))
+
+        # AI Proofread output Copy/Cut buttons with count
+        ai_proofread_buttons_frame = ttk.Frame(self.controls_frame)
+        ai_proofread_buttons_frame.grid(row=row, column=0, sticky="ew", pady=(5, 5))
+        row += 1
+
+        ttk.Button(ai_proofread_buttons_frame, text="Copy Proofread", command=self.copy_proofread_text, width=15).pack(side="left", padx=(0, 5))
+        ttk.Button(ai_proofread_buttons_frame, text="Cut Proofread", command=self.cut_proofread_text, width=15).pack(side="left", padx=(0, 5))
+        self.proofread_count_button = ttk.Label(ai_proofread_buttons_frame, text="0c, 0w", foreground="blue", font=('TkDefaultFont', 8))
+        self.proofread_count_button.pack(side="left")
+
+        # Store ref to show/hide when needed
+        self.ai_proofread_buttons_frame = ai_proofread_buttons_frame
+        # Hide by default (only show when AI proofread or proofread+translate is active)
+        ai_proofread_buttons_frame.grid_remove()
 
         # === PROMPT ===
         prompt_frame = ttk.Frame(self.controls_frame)
@@ -745,6 +761,8 @@ class App(tk.Tk):
         char_count = len(text)
         word_count = len(text.split()) if text else 0
         self.ts_count_label.config(text=f"{char_count} chars, {word_count} words")
+        # Update control panel button count (blue)
+        self.whisper_count_button.config(text=f"{char_count}c, {word_count}w")
 
     def update_pr_count(self):
         """Update character and word count for Proofread output."""
@@ -752,6 +770,8 @@ class App(tk.Tk):
         char_count = len(text)
         word_count = len(text.split()) if text else 0
         self.pr_count_label.config(text=f"{char_count} chars, {word_count} words")
+        # Update control panel button count (blue)
+        self.proofread_count_button.config(text=f"{char_count}c, {word_count}w")
 
     def update_tl_count(self):
         """Update character and word count for Translation output."""
@@ -759,6 +779,8 @@ class App(tk.Tk):
         char_count = len(text)
         word_count = len(text.split()) if text else 0
         self.tl_count_label.config(text=f"{char_count} chars, {word_count} words")
+        # Update control panel button count (blue)
+        self.translation_count_button.config(text=f"{char_count}c, {word_count}w")
 
     def on_new_proofread(self, text):
         """Called when NEW proofread text arrives. Auto-types if AI mode selected."""
@@ -852,6 +874,20 @@ class App(tk.Tk):
         except Exception as e:
             self.status_label.config(text=f"Clipboard error: {e}", foreground="red")
             return False
+
+    def on_ai_mode_changed(self, event=None):
+        """Validate AI mode selection - Proofread+Translate requires target language."""
+        mode = self.ai_mode_combo.get()
+        if mode == "Proofread+Translate":
+            target = self.target_combo.get()
+            if target == "none":
+                self.status_label.config(
+                    text="⚠ Proofread+Translate requires a Target language. Please select one.",
+                    foreground="orange"
+                )
+                # Revert to Proofread mode
+                self.ai_mode_combo.current(0)
+                return
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
@@ -1143,15 +1179,20 @@ class App(tk.Tk):
         prres_queue = None
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
-            # Show proofread window
+            # Show proofread window and buttons
             self.pr_header.grid()
             self.pr_text.grid()
-            self.pr_buttons_frame.grid()
-        else:
-            # Hide proofread window
+            self.ai_proofread_buttons_frame.grid()
+        elif ai_processor and ai_processor.mode == "proofread":
+            # Show only buttons for proofread mode (no separate window)
             self.pr_header.grid_remove()
             self.pr_text.grid_remove()
-            self.pr_buttons_frame.grid_remove()
+            self.ai_proofread_buttons_frame.grid()
+        else:
+            # Hide proofread window and buttons
+            self.pr_header.grid_remove()
+            self.pr_text.grid_remove()
+            self.ai_proofread_buttons_frame.grid_remove()
 
         threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue}, daemon=True).start()
         self.starting()

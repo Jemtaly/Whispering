@@ -167,8 +167,8 @@ The GUI uses a two-column layout:
 - **Time** - Translation service timeout in seconds
 
 **Translate/Proofread Section:**
-- **Src** - Source language (auto-detect if not set)
-- **Tgt** - Target language (no translation if set to "none")
+- **Source** - Source language (auto-detect if not set)
+- **Target** - Target language (no translation if set to "none")
 
 **AI Processing Section** (when AI is available):
 - **Enable AI** - Turn on AI-powered proofreading/translation
