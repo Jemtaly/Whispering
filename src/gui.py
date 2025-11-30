@@ -252,20 +252,22 @@ class App(tk.Tk):
         # Load settings first
         self.settings = Settings()
 
-        # Load text visibility state from settings (default: True)
-        self.text_visible = self.settings.get("text_visible", True)
+        # Load text visibility state from settings (default: False - start in minimal mode)
+        self.text_visible = self.settings.get("text_visible", False)
 
         # Flag to track if we're shutting down (prevent TTS crashes)
         self.is_shutting_down = False
 
         # Set minimum window size - will adjust based on mode
         # For minimal mode: calculate based on controls, for full mode add space for text
-        # Minimal mode: 400x850 minimum (never go below this)
-        # Full mode: 900x850 gives space for text panels
+        # Minimal mode: 400x950 minimum (never go below this)
+        # Full mode: 900x950 gives space for text panels
         if self.text_visible:
-            self.minsize(900, 850)  # Full mode - more vertical space for text
+            self.minsize(900, 950)  # Full mode - more vertical space for text
+            self.maxsize(10000, 950)  # Limit max height to 950px
         else:
-            self.minsize(400, 850)  # Minimal mode - never below 400x850
+            self.minsize(400, 950)  # Minimal mode - never below 400x950
+            self.maxsize(10000, 950)  # Limit max height to 950px
 
         # Try to load AI configuration
         self.ai_config = None
@@ -344,11 +346,20 @@ class App(tk.Tk):
 
         # Grid layout: controls in column 0, text frame in column 1
         self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        self.text_frame.grid(row=0, column=1, sticky="nsew")
 
-        # Configure grid weights
-        self.columnconfigure(0, weight=0, minsize=350)  # Controls column - fixed width
-        self.columnconfigure(1, weight=1)  # Text column - expandable
+        # Hide or show text frame based on initial state
+        if self.text_visible:
+            self.text_frame.grid(row=0, column=1, sticky="nsew")
+        # else: don't grid it (starts hidden in minimal mode)
+
+        # Configure grid weights based on initial mode
+        if self.text_visible:
+            self.columnconfigure(0, weight=0, minsize=350)  # Controls column - fixed width
+            self.columnconfigure(1, weight=1)  # Text column - expandable
+        else:
+            self.columnconfigure(0, weight=1, minsize=350)  # Controls column expands in minimal mode
+            self.columnconfigure(1, weight=0)  # Text column hidden
+
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
@@ -370,7 +381,9 @@ class App(tk.Tk):
         self.mic_button.pack(side="left")
 
         # === TOGGLE BUTTON ===
-        self.hide_text_button = ttk.Button(self.controls_frame, text="Hide Text ◀", command=self.toggle_text_display)
+        # Set initial button text based on visibility state
+        button_text = "Hide Text ◀" if self.text_visible else "Show Text ▶"
+        self.hide_text_button = ttk.Button(self.controls_frame, text=button_text, command=self.toggle_text_display)
         self.hide_text_button.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         row += 1
 
@@ -728,6 +741,12 @@ class App(tk.Tk):
             ai_enabled = self.settings.get("ai_enabled", False)
             if ai_enabled:
                 self.ai_check.state(("selected",))
+
+        # Set initial window geometry based on mode
+        if self.text_visible:
+            self.geometry("900x950")  # Full mode
+        else:
+            self.geometry("400x950")  # Minimal mode (default)
 
         # Save settings on window close
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
