@@ -156,7 +156,11 @@ The GUI uses a two-column layout:
 - **Model** - Whisper model size (default: large-v3) with VRAM estimate displayed below
 - **VAD** - Voice Activity Detection filter
 - **¶** - Adaptive paragraph detection (inserts line breaks based on pauses)
-- **⌨** - Auto-type: paste transcribed text into focused window with cursor positioning
+- **⌨** - Auto-type mode selector: choose which output to auto-type
+  - **Off** - No auto-typing
+  - **Whisper** - Type raw transcription immediately as you speak
+  - **Translation** - Type Google Translate output (1-2 second delay)
+  - **AI** - Type AI-processed output (longer delay based on trigger settings)
 - **Dev** - Inference device: cpu, cuda, or auto
 - **Mem** - Number of previous segments used as context (1-10)
 - **Pat** - Patience: seconds to wait before finalizing a segment
@@ -338,16 +342,31 @@ The paragraph detection feature automatically inserts line breaks based on the s
 
 ### Auto-Type Feature
 
-The auto-type feature (⌨ checkbox) types transcribed text directly into the currently focused window as you speak. This allows you to dictate into any application: browsers, text editors, chat apps, etc.
+The auto-type feature (⌨ dropdown) automatically types text into the currently focused window as you speak. This allows you to dictate into any application: browsers, text editors, chat apps, etc.
+
+**Auto-Type Modes:**
+
+The **⌨** dropdown lets you choose which output to auto-type:
+
+- **Off** - Disable auto-typing (transcription appears only in Whispering window)
+- **Whisper** - Auto-type raw Whisper transcription immediately as you speak
+- **Translation** - Auto-type Google Translate output (waits 1-2 seconds for translation to complete)
+- **AI** - Auto-type AI-processed output (waits for AI processing trigger to complete)
 
 **How it works:**
-1. Enable the ⌨ checkbox before clicking Start
-2. Click on the target window (browser, Discord, VS Code, etc.) to focus it
-3. Speak into your microphone
-4. Text appears in the focused window as it's transcribed
-5. The cursor is automatically moved to the end of the text before pasting (Ctrl+End on Linux/Windows, Cmd+Down on macOS)
+1. Select your desired auto-type mode from the ⌨ dropdown
+2. Click **Start** to begin transcription
+3. Click on the target window (browser, Discord, VS Code, etc.) to focus it
+4. Speak into your microphone
+5. Text is automatically typed into the focused window based on your selected mode
+6. The cursor is automatically moved to the end of the text before pasting (Ctrl+End on Linux/Windows, Cmd+Down on macOS)
+
+**Visual Feedback:**
+- When using **Translation** or **AI** modes, you'll see "⏳ Waiting for translation..." or "⏳ Waiting for AI processing..." while processing
+- When auto-typing occurs, you'll see "⌨ Auto-typing..." confirmation
 
 **Key features:**
+- **Multiple output modes** - Choose between raw, translated, or AI-processed text
 - **Cursor positioning** - Automatically moves to end of text field before pasting
 - **Clipboard-based** - Uses system clipboard + paste shortcut for maximum compatibility
 - **Cross-platform** - Works on Windows, macOS, Linux X11, and Linux Wayland

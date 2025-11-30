@@ -482,8 +482,18 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 if done_src or rsrv_src:
                     done_src = rsrv_src + done_src
                     done_snt = translate(done_src, source, target, timeout)
-                    rsrv_src = done_snt.pop()[0]
-                    done_tgt = "".join(t for s, t in done_snt)
+                    # Only pop reserve if we have multiple segments
+                    if len(done_snt) > 1:
+                        rsrv_src = done_snt.pop()[0]
+                        done_tgt = "".join(t for s, t in done_snt)
+                    elif len(done_snt) == 1:
+                        # Don't pop if only one segment - use it all
+                        done_tgt = done_snt[0][1]
+                        rsrv_src = ""
+                    else:
+                        # Empty translation result
+                        done_tgt = ""
+                        rsrv_src = ""
                 else:
                     done_tgt = ""
                 curr_src = rsrv_src + curr_src

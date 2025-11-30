@@ -25,7 +25,11 @@ VAD: Voice Activity Detection (filters silence/noise)
 
 ¶: Adaptive paragraph detection (auto line breaks by pauses)
 
-⌨: Auto-type to focused window (dictation mode)
+⌨: Auto-type mode selector
+  • Off - No auto-typing
+  • Whisper - Type raw transcription immediately
+  • Translation - Type Google Translate output (1-2 sec delay)
+  • AI - Type AI-processed output (longer delay based on trigger)
 
 Dev: Inference device (cuda=GPU, cpu=CPU, auto=best)
 
@@ -212,7 +216,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Whispering")
-        self.autotype_enabled = False  # Track autotype state
+        self.autotype_mode_active = "Off"  # Track autotype mode: Off, Whisper, Translation, AI
 
         # Load settings first
         self.settings = Settings()
@@ -373,9 +377,11 @@ class App(tk.Tk):
         self.para_check.state(("!alternate", "selected"))
         self.para_check.pack(side="left", padx=(0, 8))
 
-        self.type_check = ttk.Checkbutton(options_frame, text="⌨", onvalue=True, offvalue=False)
-        self.type_check.state(("!alternate",))
-        self.type_check.pack(side="left", padx=(0, 8))
+        ttk.Label(options_frame, text="⌨:").pack(side="left", padx=(0, 2))
+        self.autotype_mode = ttk.Combobox(options_frame, values=["Off", "Whisper", "Translation", "AI"],
+                                          state="readonly", width=10)
+        self.autotype_mode.current(0)  # Default to "Off"
+        self.autotype_mode.pack(side="left", padx=(0, 8))
 
         ttk.Label(options_frame, text="Dev:").pack(side="left", padx=(0, 2))
         self.device_combo = ttk.Combobox(options_frame, values=core.devices, state="readonly", width=6)
@@ -655,7 +661,14 @@ class App(tk.Tk):
         if self.tts_available and "selected" in self.tts_check.state():
             self.tts_session_text += text + " "
 
-        if self.autotype_enabled and text:
+        # Show waiting indicator if we're in Translation or AI mode
+        if self.autotype_mode_active == "Translation" and text:
+            self.status_label.config(text="⏳ Waiting for translation...", foreground="blue")
+        elif self.autotype_mode_active == "AI" and text:
+            self.status_label.config(text="⏳ Waiting for AI processing...", foreground="blue")
+
+        # Auto-type Whisper output if that mode is selected
+        if self.autotype_mode_active == "Whisper" and text:
             try:
                 import autotype
                 # Type immediately in a thread
@@ -673,10 +686,31 @@ class App(tk.Tk):
                     self.status_label.config(text="autotype.py not found")
 
     def on_new_translation(self, text):
-        """Called when NEW translated/proofread text arrives. No longer used for TTS."""
-        # TTS now accumulates from raw transcription (on_new_transcription)
-        # so ALL speech is captured, not just what gets proofread
-        pass
+        """Called when NEW translated/proofread text arrives. Auto-types if Translation or AI mode selected."""
+        # Auto-type Translation or AI output if those modes are selected
+        if self.autotype_mode_active in ("Translation", "AI") and text:
+            # Clear waiting message and show auto-typing indicator
+            mode_name = "translation" if self.autotype_mode_active == "Translation" else "AI output"
+            self.status_label.config(text=f"⌨ Auto-typing {mode_name}...", foreground="green")
+
+            try:
+                import autotype
+                # Type immediately in a thread
+                def do_type():
+                    if not autotype.type_text(text, restore_clipboard=False):
+                        if not self.autotype_error_shown:
+                            self.autotype_error_shown = True
+                            # Show error in status (thread-safe via after)
+                            self.after(0, lambda: self.status_label.config(
+                                text="Auto-type failed. Run: python autotype.py --check"))
+                    else:
+                        # Success - clear status after a moment
+                        self.after(1000, lambda: self.status_label.config(text=""))
+                threading.Thread(target=do_type, daemon=True).start()
+            except ImportError:
+                if not self.autotype_error_shown:
+                    self.autotype_error_shown = True
+                    self.status_label.config(text="autotype.py not found")
 
     def update_ts_count(self):
         """Update character and word count for Whisper output."""
@@ -971,7 +1005,7 @@ class App(tk.Tk):
         model = self.model_combo.get()
         vad = self.vad_check.instate(("selected",))
         para_detect = self.para_check.instate(("selected",))
-        self.autotype_enabled = self.type_check.instate(("selected",))  # Capture autotype state
+        self.autotype_mode_active = self.autotype_mode.get()  # Capture autotype mode
         memory = int(self.memory_spin.get())
         patience = float(self.patience_spin.get())
         timeout = float(self.timeout_spin.get())
@@ -1043,7 +1077,7 @@ class App(tk.Tk):
         self.after(100, self.starting)
 
     def stop(self):
-        self.autotype_enabled = False  # Disable autotype when stopping
+        self.autotype_mode_active = "Off"  # Disable autotype when stopping
         self.ready[0] = False
         self.control_button.config(text="Stopping...", command=None, state="disabled")
         self.stopping()
