@@ -586,8 +586,10 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             if tr_error:
                                 print(f"[DEBUG] Translation Error: {tr_error}", flush=True)
 
-                            # Determine separator based on context
-                            separator = '\n\n' if has_paragraph_break else ' '
+                            # Determine separators - use paragraph breaks for proofread for better readability
+                            # Use smart separator for translation (paragraph break or space)
+                            proofread_separator = '\n\n'  # Always use paragraph breaks for proofread output
+                            translation_separator = '\n\n' if has_paragraph_break else ' '
                             last_process_time = time.time()  # Reset timer after processing
 
                             # Send proofread to pr queue, translation to tl queue
@@ -595,10 +597,10 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             print(f"[DEBUG]   - Sending proofread ({len(proofread_text)} chars) to PR_QUEUE", flush=True)
                             print(f"[DEBUG]   - Sending translation ({len(translate_text)} chars) to TL_QUEUE", flush=True)
                             if proofread_text:
-                                prres_queue.put((proofread_text + separator, ""))
+                                prres_queue.put((proofread_text + proofread_separator, ""))
                                 print(f"[DEBUG]   ✓ Sent to PR_QUEUE", flush=True)
                             if translate_text:
-                                tlres_queue.put((translate_text + separator, ""))
+                                tlres_queue.put((translate_text + translation_separator, ""))
                                 print(f"[DEBUG]   ✓ Sent to TL_QUEUE", flush=True)
                             print(f"[DEBUG] ========== TWO-CALL PROCESSING COMPLETE ==========", flush=True)
                         else:
