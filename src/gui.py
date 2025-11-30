@@ -282,27 +282,54 @@ class App(tk.Tk):
         ttk.Button(ts_buttons_frame, text="Copy", command=self.copy_whisper_text, width=10).pack(side="left", padx=(0, 5))
         ttk.Button(ts_buttons_frame, text="Cut", command=self.cut_whisper_text, width=10).pack(side="left")
 
-        # Translated/Proofread output (bottom) - header frame with label and count
+        # Proofread output (middle) - header frame with label and count
+        pr_header = ttk.Frame(self.text_frame)
+        pr_header.grid(row=3, column=0, sticky="ew", padx=5, pady=(5, 2))
+        pr_label = ttk.Label(pr_header, text="Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        pr_label.pack(side="left")
+        self.pr_count_label = ttk.Label(pr_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
+        self.pr_count_label.pack(side="right")
+
+        self.pr_text = Text(self.text_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
+        self.pr_text.grid(row=4, column=0, sticky="nsew")
+
+        # Proofread text control buttons
+        pr_buttons_frame = ttk.Frame(self.text_frame)
+        pr_buttons_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=(2, 5))
+        ttk.Button(pr_buttons_frame, text="Copy", command=self.copy_proofread_text, width=10).pack(side="left", padx=(0, 5))
+        ttk.Button(pr_buttons_frame, text="Cut", command=self.cut_proofread_text, width=10).pack(side="left")
+
+        # Hide proofread window by default (only show when AI proofread+translate is active)
+        pr_header.grid_remove()
+        self.pr_text.grid_remove()
+        pr_buttons_frame.grid_remove()
+
+        # Translation output (bottom) - header frame with label and count
         tl_header = ttk.Frame(self.text_frame)
-        tl_header.grid(row=3, column=0, sticky="ew", padx=5, pady=(5, 2))
-        tl_label = ttk.Label(tl_header, text="Translated/Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        tl_header.grid(row=6, column=0, sticky="ew", padx=5, pady=(5, 2))
+        tl_label = ttk.Label(tl_header, text="Translation Output", font=('TkDefaultFont', 9, 'bold'))
         tl_label.pack(side="left")
         self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.tl_count_label.pack(side="right")
 
         self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
-        self.tl_text.grid(row=4, column=0, sticky="nsew")
+        self.tl_text.grid(row=7, column=0, sticky="nsew")
 
         # Translation text control buttons
         tl_buttons_frame = ttk.Frame(self.text_frame)
-        tl_buttons_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=(2, 5))
+        tl_buttons_frame.grid(row=8, column=0, sticky="ew", padx=5, pady=(2, 5))
         ttk.Button(tl_buttons_frame, text="Copy", command=self.copy_translation_text, width=10).pack(side="left", padx=(0, 5))
         ttk.Button(tl_buttons_frame, text="Cut", command=self.cut_translation_text, width=10).pack(side="left")
 
+        # Store references to show/hide proofread window dynamically
+        self.pr_header = pr_header
+        self.pr_buttons_frame = pr_buttons_frame
+
         # Configure text_frame grid
         self.text_frame.columnconfigure(0, weight=1)
-        self.text_frame.rowconfigure(1, weight=1)
-        self.text_frame.rowconfigure(4, weight=1)
+        self.text_frame.rowconfigure(1, weight=1)  # Whisper
+        self.text_frame.rowconfigure(4, weight=1)  # Proofread
+        self.text_frame.rowconfigure(7, weight=1)  # Translation
 
         # Grid layout: controls in column 0, text frame in column 1
         self.controls_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
@@ -514,7 +541,7 @@ class App(tk.Tk):
         self.ai_interval_label.pack(side="left", padx=(5, 2))
         interval_values = [str(i) for i in range(1, 11)]
         self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_values, state="readonly", width=5)
-        self.ai_interval_combo.current(1)
+        self.ai_interval_combo.current(0)  # Default to 1 minute
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
         self.ai_interval_combo.pack(side="left")
@@ -719,12 +746,44 @@ class App(tk.Tk):
         word_count = len(text.split()) if text else 0
         self.ts_count_label.config(text=f"{char_count} chars, {word_count} words")
 
+    def update_pr_count(self):
+        """Update character and word count for Proofread output."""
+        text = self.pr_text.get("1.0", "end-1c").strip()
+        char_count = len(text)
+        word_count = len(text.split()) if text else 0
+        self.pr_count_label.config(text=f"{char_count} chars, {word_count} words")
+
     def update_tl_count(self):
-        """Update character and word count for Translated/Proofread output."""
+        """Update character and word count for Translation output."""
         text = self.tl_text.get("1.0", "end-1c").strip()
         char_count = len(text)
         word_count = len(text.split()) if text else 0
         self.tl_count_label.config(text=f"{char_count} chars, {word_count} words")
+
+    def on_new_proofread(self, text):
+        """Called when NEW proofread text arrives. Auto-types if AI mode selected."""
+        # Auto-type proofread output if AI mode is selected
+        if self.autotype_mode_active == "AI" and text:
+            # Clear waiting message and show auto-typing indicator
+            self.status_label.config(text="⌨ Auto-typing AI proofread...", foreground="green")
+
+            try:
+                import autotype
+                # Type immediately in a thread
+                def do_type():
+                    if not autotype.type_text(text, restore_clipboard=False):
+                        if not self.autotype_error_shown:
+                            self.autotype_error_shown = True
+                            self.after(0, lambda: self.status_label.config(
+                                text="Auto-type failed. Run: python autotype.py --check"))
+                    else:
+                        # Success - clear status after a moment
+                        self.after(1000, lambda: self.status_label.config(text=""))
+                threading.Thread(target=do_type, daemon=True).start()
+            except ImportError:
+                if not self.autotype_error_shown:
+                    self.autotype_error_shown = True
+                    self.status_label.config(text="autotype.py not found")
 
     def copy_whisper_text(self):
         """Copy Whisper output text to clipboard."""
@@ -745,8 +804,27 @@ class App(tk.Tk):
         else:
             self.status_label.config(text="No text to cut", foreground="orange")
 
+    def copy_proofread_text(self):
+        """Copy Proofread output text to clipboard."""
+        text = self.pr_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.status_label.config(text="✓ Copied proofread text to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to copy", foreground="orange")
+
+    def cut_proofread_text(self):
+        """Cut Proofread output text (copy and clear)."""
+        text = self.pr_text.get("1.0", "end-1c").strip()
+        if text:
+            self._copy_to_clipboard(text)
+            self.pr_text.clear()
+            self.status_label.config(text="✓ Cut proofread text to clipboard", foreground="green")
+        else:
+            self.status_label.config(text="No text to cut", foreground="orange")
+
     def copy_translation_text(self):
-        """Copy Translation/Proofread output text to clipboard."""
+        """Copy Translation output text to clipboard."""
         text = self.tl_text.get("1.0", "end-1c").strip()
         if text:
             self._copy_to_clipboard(text)
@@ -1061,7 +1139,21 @@ class App(tk.Tk):
         ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
         ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode}, daemon=True).start()
+        # Check if we need to show proofread window (for AI proofread+translate mode)
+        prres_queue = None
+        if ai_processor and ai_processor.mode == "proofread_translate":
+            prres_queue = self.pr_text.res_queue
+            # Show proofread window
+            self.pr_header.grid()
+            self.pr_text.grid()
+            self.pr_buttons_frame.grid()
+        else:
+            # Hide proofread window
+            self.pr_header.grid_remove()
+            self.pr_text.grid_remove()
+            self.pr_buttons_frame.grid_remove()
+
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue}, daemon=True).start()
         self.starting()
         self.update_level()
 

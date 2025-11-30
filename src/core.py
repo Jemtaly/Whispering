@@ -326,6 +326,57 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
+def parse_ai_proofread_translate(text):
+    """
+    Parse AI output when using proofread+translate mode.
+
+    Expected format:
+    PROOFREAD:
+    [corrected text]
+
+    TRANSLATE:
+    [translated text]
+
+    Returns:
+        (proofread_text, translate_text) tuple
+        If parsing fails, returns ("", text) to show translation only
+    """
+    if not text:
+        return ("", "")
+
+    # Try to parse the structured output
+    text_upper = text.upper()
+
+    # Look for PROOFREAD: and TRANSLATE: markers
+    proofread_marker = text_upper.find("PROOFREAD:")
+    translate_marker = text_upper.find("TRANSLATE:")
+
+    if proofread_marker != -1 and translate_marker != -1:
+        # Both markers found - extract sections
+        proofread_start = proofread_marker + len("PROOFREAD:")
+        proofread_end = translate_marker
+
+        proofread_text = text[proofread_start:proofread_end].strip()
+        translate_text = text[translate_marker + len("TRANSLATE:"):].strip()
+
+        return (proofread_text, translate_text)
+
+    elif translate_marker != -1:
+        # Only TRANSLATE marker found - might be translate-only mode
+        translate_text = text[translate_marker + len("TRANSLATE:"):].strip()
+        return ("", translate_text)
+
+    elif proofread_marker != -1:
+        # Only PROOFREAD marker found - might be proofread-only mode
+        proofread_text = text[proofread_marker + len("PROOFREAD:"):].strip()
+        return (proofread_text, "")
+
+    else:
+        # No markers found - treat entire text as translation
+        # (AI might have returned only the translated text)
+        return ("", text)
+
+
 def ai_translate(text, ai_processor):
     """
     Translate/process text using AI provider.
@@ -347,7 +398,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -475,8 +526,17 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         separator = '\n\n' if has_paragraph_break else ' '
                         last_process_time = time.time()  # Reset timer after processing
 
-                        # Send the NEW processed chunk - ONLY send when we have processed text
-                        tlres_queue.put((processed + separator, ""))
+                        # Parse output if using proofread+translate mode
+                        if prres_queue and ai_processor and ai_processor.mode == "proofread_translate":
+                            proofread_text, translate_text = parse_ai_proofread_translate(processed)
+                            # Send proofread to pr queue, translation to tl queue
+                            if proofread_text:
+                                prres_queue.put((proofread_text + separator, ""))
+                            if translate_text:
+                                tlres_queue.put((translate_text + separator, ""))
+                        else:
+                            # Send the NEW processed chunk - ONLY send when we have processed text
+                            tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:
@@ -504,9 +564,19 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         # Process any remaining accumulated text on exit
         if ai_processor and accumulated_done and accumulated_done.strip():
             final_tgt, _ = ai_translate(accumulated_done, ai_processor)
-            tlres_queue.put((final_tgt, ""))
+            # Parse output if using proofread+translate mode
+            if prres_queue and ai_processor.mode == "proofread_translate":
+                proofread_text, translate_text = parse_ai_proofread_translate(final_tgt)
+                if proofread_text:
+                    prres_queue.put((proofread_text, ""))
+                if translate_text:
+                    tlres_queue.put((translate_text, ""))
+            else:
+                tlres_queue.put((final_tgt, ""))
 
         tlres_queue.put(None)
+        if prres_queue:
+            prres_queue.put(None)
 
     try:
         # Load model first (before opening audio stream)

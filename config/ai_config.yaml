@@ -126,14 +126,23 @@ prompts:
       - Maintain formatting (line breaks, paragraph breaks)
       - Use natural, fluent language in the target language
 
+      Output Format (IMPORTANT):
+      Return BOTH the proofread and translated versions in this exact format:
+
+      PROOFREAD:
+      [corrected text in original language]
+
+      TRANSLATE:
+      [translated text in target language]
+
       Examples:
-      Input (English): "How cold is it today?"
-      Output (Spanish): "¿Qué tan frío está hoy?"
+      Input: "in the last two chapters we have discussed about corals and marine life"
+      Output:
+      PROOFREAD:
+      In the last two chapters, we have discussed corals and marine life.
 
-      Input (English): "Are u able too understand me?"
-      Output (French): "Êtes-vous capable de me comprendre ?"
-
-      Return ONLY the final translated text, no explanations or notes.
+      TRANSLATE:
+      În ultimele două capitole, am discutat despre corali și viața marină.
 
 # Default Settings
 defaults:
@@ -141,6 +150,6 @@ defaults:
   mode: "proofread_translate"
   temperature: 0.1  # Lower = more deterministic, less creative (was 0.3)
   max_retries: 2
-  min_chars_to_process: 150  # Minimum characters before AI processing (with paragraph break)
-  max_chars_to_accumulate: 400  # Force processing even without paragraph break (prevents indefinite waiting)
+  min_chars_to_process: 100  # Minimum characters before AI processing (with paragraph break)
+  max_chars_to_accumulate: 300  # Force processing even without paragraph break (prevents indefinite waiting)
   chunk_size: 500  # Process in chunks for better real-time performance
