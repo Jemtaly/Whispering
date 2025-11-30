@@ -536,7 +536,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         # Process with AI - DETAILED DEBUG
                         print(f"\n[DEBUG] ========== CONDITION CHECK ==========", flush=True)
                         print(f"[DEBUG] 1. prres_queue = {prres_queue}", flush=True)
-                        print(f"[DEBUG]    prres_queue bool = {bool(prres_queue)}", flush=True)
+                        print(f"[DEBUG]    prres_queue is not None = {prres_queue is not None}", flush=True)
+                        print(f"[DEBUG]    prres_queue bool = {bool(prres_queue)} (NOTE: Queue.__bool__ returns False when empty!)", flush=True)
                         print(f"[DEBUG] 2. ai_processor = {ai_processor}", flush=True)
                         print(f"[DEBUG]    ai_processor bool = {bool(ai_processor)}", flush=True)
                         if ai_processor:
@@ -544,12 +545,12 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             print(f"[DEBUG]    mode == 'proofread_translate' = {ai_processor.mode == 'proofread_translate'}", flush=True)
                         print(f"[DEBUG] 4. AI_AVAILABLE = {AI_AVAILABLE}", flush=True)
 
-                        # Check combined condition
-                        combined = bool(prres_queue and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE)
+                        # Check combined condition (FIX: use 'is not None' instead of bool check!)
+                        combined = bool(prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE)
                         print(f"[DEBUG] 5. COMBINED CONDITION = {combined}", flush=True)
                         print(f"[DEBUG] ======================================\n", flush=True)
 
-                        if prres_queue and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
+                        if prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                             # Make TWO separate calls for proofread+translate mode
                             print(f"[DEBUG] ========== EXECUTING TWO-CALL AI PROCESSING ==========", flush=True)
                             print(f"[DEBUG] Input text: {to_process[:100]}...", flush=True)
