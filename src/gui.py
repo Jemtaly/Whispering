@@ -181,6 +181,11 @@ class Text(tk.Text):
             pass
 
         while self.res_queue:
+            # Temporarily enable widget if disabled (for programmatic updates)
+            was_disabled = str(self.cget("state")) == "disabled"
+            if was_disabled:
+                self.config(state="normal")
+
             if res := self.res_queue.get():
                 done, curr = res
                 # Calculate NEW text (what we haven't processed yet)
@@ -216,6 +221,10 @@ class Text(tk.Text):
                 self.prev_done = ""  # Reset for next segment
                 self.see("end")
                 text_changed = True
+
+            # Restore disabled state if it was disabled
+            if was_disabled:
+                self.config(state="disabled")
 
         # Fire text changed callback if text was modified
         if text_changed and self.on_text_changed:
@@ -309,9 +318,9 @@ class App(tk.Tk):
         self.pr_text = Text(self.text_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
         self.pr_text.grid(row=3, column=0, sticky="nsew")
 
-        # Hide proofread window by default (only show when AI proofread+translate is active)
-        pr_header.grid_remove()
-        self.pr_text.grid_remove()
+        # Disable proofread window by default (enable when AI proofread+translate is active)
+        # Keep visible but grayed out
+        self.pr_text.config(state="disabled", background="#f0f0f0")
 
         # Translation output (bottom) - header frame with label and count
         tl_header = ttk.Frame(self.text_frame)
@@ -1034,11 +1043,11 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)
             self.columnconfigure(1, weight=0)  # Text column won't expand
 
-            # Adjust minimum size for minimal mode (never below 400x850)
-            self.minsize(400, 850)
+            # Adjust minimum size for minimal mode (never below 400x950)
+            self.minsize(400, 950)
 
             # Resize window to minimal width
-            self.geometry("400x850")
+            self.geometry("400x950")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
@@ -1050,10 +1059,10 @@ class App(tk.Tk):
             self.columnconfigure(1, weight=1)  # Text column expands
 
             # Restore minimum size for full mode
-            self.minsize(900, 850)
+            self.minsize(900, 950)
 
-            # Resize window to show both columns
-            self.geometry("900x850")
+            # Resize window to show both columns (max height 950px)
+            self.geometry("900x950")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
@@ -1204,28 +1213,25 @@ class App(tk.Tk):
         ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
         ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
-        # Check if we need to show proofread window (for AI proofread+translate mode)
+        # Check if we need to enable proofread window (for AI proofread+translate mode)
         prres_queue = None
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
-            # Show proofread window and buttons
-            print(f"[GUI] Showing proofread window (mode: {ai_processor.mode})", flush=True)
+            # Enable proofread window and show buttons
+            print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
             print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
             print(f"[GUI] self.pr_text.res_queue ID: {id(self.pr_text.res_queue)}", flush=True)
-            self.pr_header.grid()
-            self.pr_text.grid()
+            self.pr_text.config(state="normal", background="white")
             self.ai_proofread_buttons_frame.grid()
         elif ai_processor and ai_processor.mode == "proofread":
-            # Show only buttons for proofread mode (no separate window)
-            print(f"[GUI] Showing only proofread buttons (mode: {ai_processor.mode})", flush=True)
-            self.pr_header.grid_remove()
-            self.pr_text.grid_remove()
+            # Enable proofread window for proofread-only mode, show buttons
+            print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
+            self.pr_text.config(state="normal", background="white")
             self.ai_proofread_buttons_frame.grid()
         else:
-            # Hide proofread window and buttons
-            print(f"[GUI] Hiding proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
-            self.pr_header.grid_remove()
-            self.pr_text.grid_remove()
+            # Disable proofread window and hide buttons (keep visible but grayed)
+            print(f"[GUI] Disabling proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
+            self.pr_text.config(state="disabled", background="#f0f0f0")
             self.ai_proofread_buttons_frame.grid_remove()
 
         threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue}, daemon=True).start()

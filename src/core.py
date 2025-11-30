@@ -645,7 +645,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         # Process any remaining accumulated text on exit
         if ai_processor and accumulated_done and accumulated_done.strip():
             print(f"[DEBUG] EXIT: Processing remaining text ({len(accumulated_done)} chars)", flush=True)
-            if prres_queue and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
+            if prres_queue is not None and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                 # Make TWO separate calls for proofread+translate mode
                 print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
                 config = AIConfig()
