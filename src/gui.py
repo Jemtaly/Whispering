@@ -163,6 +163,23 @@ class Text(tk.Text):
 
     def poll(self):
         text_changed = False
+        queue_name = None
+        # Identify which Text widget this is for debug purposes
+        try:
+            if hasattr(self, 'winfo_parent'):
+                parent = self.nametowidget(self.winfo_parent())
+                if hasattr(parent, 'winfo_parent'):
+                    grandparent = parent.nametowidget(parent.winfo_parent())
+                    # Try to determine if this is the proofread text widget
+                    if 'pr_text' in str(self):
+                        queue_name = "PR_QUEUE"
+                    elif 'tl_text' in str(self):
+                        queue_name = "TL_QUEUE"
+                    elif 'ts_text' in str(self):
+                        queue_name = "TS_QUEUE"
+        except:
+            pass
+
         while self.res_queue:
             if res := self.res_queue.get():
                 done, curr = res
@@ -171,6 +188,11 @@ class Text(tk.Text):
                 if len(done) > len(self.prev_done):
                     new_text = done[len(self.prev_done):]
                 self.prev_done = done
+
+                if queue_name:
+                    print(f"[TEXT-{queue_name}] Received: done={done[:50]}... curr={curr[:50]}...", flush=True)
+                    if new_text:
+                        print(f"[TEXT-{queue_name}] NEW text: {new_text[:100]}...", flush=True)
 
                 # Update display
                 self.delete(self.record, "end")
@@ -1187,16 +1209,21 @@ class App(tk.Tk):
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
             # Show proofread window and buttons
+            print(f"[GUI] Showing proofread window (mode: {ai_processor.mode})", flush=True)
+            print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
+            print(f"[GUI] self.pr_text.res_queue ID: {id(self.pr_text.res_queue)}", flush=True)
             self.pr_header.grid()
             self.pr_text.grid()
             self.ai_proofread_buttons_frame.grid()
         elif ai_processor and ai_processor.mode == "proofread":
             # Show only buttons for proofread mode (no separate window)
+            print(f"[GUI] Showing only proofread buttons (mode: {ai_processor.mode})", flush=True)
             self.pr_header.grid_remove()
             self.pr_text.grid_remove()
             self.ai_proofread_buttons_frame.grid()
         else:
             # Hide proofread window and buttons
+            print(f"[GUI] Hiding proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
             self.pr_header.grid_remove()
             self.pr_text.grid_remove()
             self.ai_proofread_buttons_frame.grid_remove()

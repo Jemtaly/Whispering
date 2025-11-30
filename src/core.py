@@ -534,11 +534,17 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
                     if to_process:
                         # Process with AI
+                        print(f"[DEBUG] AI processor mode: {ai_processor.mode if ai_processor else 'None'}", flush=True)
+                        print(f"[DEBUG] prres_queue exists: {prres_queue is not None}", flush=True)
+                        print(f"[DEBUG] AI_AVAILABLE: {AI_AVAILABLE}", flush=True)
+
                         if prres_queue and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                             # Make TWO separate calls for proofread+translate mode
-                            print(f"[DEBUG] Making TWO AI calls for proofread+translate", flush=True)
+                            print(f"[DEBUG] ========== EXECUTING TWO-CALL AI PROCESSING ==========", flush=True)
+                            print(f"[DEBUG] Input text: {to_process[:100]}...", flush=True)
 
-                            # First call: Proofread only
+                            # FIRST CALL: Proofread only
+                            print(f"[DEBUG] STEP 1: Creating proofread-only processor", flush=True)
                             config = AIConfig()
                             proofread_processor = AITextProcessor(
                                 config=config,
@@ -547,13 +553,14 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                                 source_lang=ai_processor.source_lang,
                                 target_lang=None
                             )
-
+                            print(f"[DEBUG] STEP 2: Calling AI for proofread", flush=True)
                             proofread_text, pr_error = ai_translate(to_process, proofread_processor)
-                            print(f"[DEBUG] Proofread result: {proofread_text[:100]}...", flush=True)
+                            print(f"[DEBUG] STEP 3: Proofread result: '{proofread_text[:150]}'...", flush=True)
                             if pr_error:
-                                print(f"AI Proofread Error: {pr_error}", flush=True)
+                                print(f"[DEBUG] Proofread Error: {pr_error}", flush=True)
 
-                            # Second call: Translate the proofread text
+                            # SECOND CALL: Translate the proofread text
+                            print(f"[DEBUG] STEP 4: Creating translate-only processor", flush=True)
                             translate_processor = AITextProcessor(
                                 config=config,
                                 model_id=ai_processor.provider.model_id,
@@ -561,25 +568,30 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                                 source_lang=ai_processor.source_lang,
                                 target_lang=ai_processor.target_lang
                             )
-
+                            print(f"[DEBUG] STEP 5: Calling AI for translation (input=proofread text)", flush=True)
                             translate_text, tr_error = ai_translate(proofread_text, translate_processor)
-                            print(f"[DEBUG] Translate result: {translate_text[:100]}...", flush=True)
+                            print(f"[DEBUG] STEP 6: Translation result: '{translate_text[:150]}'...", flush=True)
                             if tr_error:
-                                print(f"AI Translate Error: {tr_error}", flush=True)
+                                print(f"[DEBUG] Translation Error: {tr_error}", flush=True)
 
                             # Determine separator based on context
                             separator = '\n\n' if has_paragraph_break else ' '
                             last_process_time = time.time()  # Reset timer after processing
 
                             # Send proofread to pr queue, translation to tl queue
-                            print(f"[DEBUG] Sending proofread to pr_queue: {bool(prres_queue)}", flush=True)
-                            print(f"[DEBUG] Sending translation to tl_queue", flush=True)
+                            print(f"[DEBUG] STEP 7: Sending to queues...", flush=True)
+                            print(f"[DEBUG]   - Sending proofread ({len(proofread_text)} chars) to PR_QUEUE", flush=True)
+                            print(f"[DEBUG]   - Sending translation ({len(translate_text)} chars) to TL_QUEUE", flush=True)
                             if proofread_text:
                                 prres_queue.put((proofread_text + separator, ""))
+                                print(f"[DEBUG]   ✓ Sent to PR_QUEUE", flush=True)
                             if translate_text:
                                 tlres_queue.put((translate_text + separator, ""))
+                                print(f"[DEBUG]   ✓ Sent to TL_QUEUE", flush=True)
+                            print(f"[DEBUG] ========== TWO-CALL PROCESSING COMPLETE ==========", flush=True)
                         else:
                             # Single AI call (proofread-only or translate-only)
+                            print(f"[DEBUG] Using SINGLE AI call (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
                             processed, ai_error = ai_translate(to_process, ai_processor)
                             if ai_error:
                                 # Log error to console but continue with result
@@ -590,6 +602,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             last_process_time = time.time()  # Reset timer after processing
 
                             # Send the NEW processed chunk - ONLY send when we have processed text
+                            print(f"[DEBUG] Sending single AI result to TL_QUEUE", flush=True)
                             tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
@@ -617,8 +630,10 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         # Process any remaining accumulated text on exit
         if ai_processor and accumulated_done and accumulated_done.strip():
+            print(f"[DEBUG] EXIT: Processing remaining text ({len(accumulated_done)} chars)", flush=True)
             if prres_queue and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                 # Make TWO separate calls for proofread+translate mode
+                print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
                 config = AIConfig()
                 proofread_processor = AITextProcessor(
                     config=config,
@@ -629,6 +644,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 )
 
                 proofread_text, _ = ai_translate(accumulated_done, proofread_processor)
+                print(f"[DEBUG] EXIT: Proofread result: '{proofread_text[:100]}'", flush=True)
 
                 translate_processor = AITextProcessor(
                     config=config,
@@ -639,13 +655,17 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 )
 
                 translate_text, _ = ai_translate(proofread_text, translate_processor)
+                print(f"[DEBUG] EXIT: Translation result: '{translate_text[:100]}'", flush=True)
 
                 if proofread_text:
                     prres_queue.put((proofread_text, ""))
+                    print(f"[DEBUG] EXIT: Sent proofread to PR_QUEUE", flush=True)
                 if translate_text:
                     tlres_queue.put((translate_text, ""))
+                    print(f"[DEBUG] EXIT: Sent translation to TL_QUEUE", flush=True)
             else:
                 # Single AI call
+                print(f"[DEBUG] EXIT: Using single AI call", flush=True)
                 final_tgt, _ = ai_translate(accumulated_done, ai_processor)
                 tlres_queue.put((final_tgt, ""))
 
