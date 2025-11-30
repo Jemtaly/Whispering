@@ -538,11 +538,14 @@ class App(tk.Tk):
         self.ai_trigger_combo.pack(side="left")
 
         # AI Interval/Words (same row, toggled)
-        self.ai_interval_label = ttk.Label(ai_trigger_frame, text=" min:")
+        self.ai_interval_label = ttk.Label(ai_trigger_frame, text=" sec:")
         self.ai_interval_label.pack(side="left", padx=(5, 2))
-        interval_values = [str(i) for i in range(1, 11)]
-        self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_values, state="readonly", width=5)
-        self.ai_interval_combo.current(0)  # Default to 1 minute
+        # Intervals: 5, 10, 15, 20, 25, 30, 45 seconds, 60 (1min), 90 (1.5min), 120 (2min)
+        interval_values = ["5", "10", "15", "20", "25", "30", "45", "60", "90", "120"]
+        interval_labels = ["5s", "10s", "15s", "20s", "25s", "30s", "45s", "1m", "1.5m", "2m"]
+        self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_labels, state="readonly", width=6)
+        self.ai_interval_combo.current(3)  # Default to 20 seconds
+        self.ai_interval_values_map = dict(zip(interval_labels, interval_values))  # Map display to actual values
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
         self.ai_interval_combo.pack(side="left")
@@ -876,13 +879,13 @@ class App(tk.Tk):
             return False
 
     def on_ai_mode_changed(self, event=None):
-        """Validate AI mode selection - Proofread+Translate requires target language."""
+        """Validate AI mode selection - Proofread+Translate and Translate require target language."""
         mode = self.ai_mode_combo.get()
-        if mode == "Proofread+Translate":
+        if mode in ("Proofread+Translate", "Translate"):
             target = self.target_combo.get()
             if target == "none":
                 self.status_label.config(
-                    text="⚠ Proofread+Translate requires a Target language. Please select one.",
+                    text=f"⚠ {mode} mode requires a Target language. Please select one.",
                     foreground="orange"
                 )
                 # Revert to Proofread mode
@@ -1171,7 +1174,11 @@ class App(tk.Tk):
                 ai_processor = None
 
         # Get AI processing parameters
-        ai_process_interval = int(self.ai_interval_combo.get()) if self.ai_available else 2
+        if self.ai_available:
+            interval_label = self.ai_interval_combo.get()
+            ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))  # seconds
+        else:
+            ai_process_interval = 20  # Default 20 seconds
         ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
         ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 

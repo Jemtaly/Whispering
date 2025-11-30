@@ -4,6 +4,7 @@ import collections
 import io
 import math
 import threading
+import time
 import wave
 from urllib.parse import quote
 
@@ -12,6 +13,14 @@ import requests
 import sounddevice as sd
 from cmque import DataDeque, PairDeque, Queue
 from faster_whisper import WhisperModel
+
+# Import AI modules at top level
+try:
+    from ai_config import AIConfig
+    from ai_provider import AITextProcessor
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
 
 
 models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"]
@@ -453,15 +462,23 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         accumulated_done = ""  # Accumulate done text before processing
         last_process_time = time.time()  # Track when we last processed
         last_activity_time = time.time()  # Track when we last received text
+        start_time = time.time()  # Track total runtime for auto-stop
 
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
         MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
-        PROCESS_INTERVAL_SECONDS = ai_process_interval * 60 if ai_trigger_mode == "time" else float('inf')
+        PROCESS_INTERVAL_SECONDS = ai_process_interval if ai_trigger_mode == "time" else float('inf')  # Already in seconds
         PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
         SILENCE_TIMEOUT = silence_timeout  # Flush after this many seconds of silence
+        AUTO_STOP_DURATION = 300  # Auto-stop after 5 minutes (300 seconds) of running
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
+
+            # Check for auto-stop (5 minutes)
+            if time.time() - start_time >= AUTO_STOP_DURATION:
+                print("[INFO] Auto-stopping after 5 minutes", flush=True)
+                ready[0] = False  # Signal stop
+                break
 
             # Use AI processing if available
             if ai_processor:
@@ -517,22 +534,22 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
                     if to_process:
                         # Process with AI
-                        if prres_queue and ai_processor and ai_processor.mode == "proofread_translate":
+                        if prres_queue and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                             # Make TWO separate calls for proofread+translate mode
-                            # First call: Proofread
-                            from ai_config import AIConfig
-                            from ai_provider import AITextProcessor
+                            print(f"[DEBUG] Making TWO AI calls for proofread+translate", flush=True)
 
+                            # First call: Proofread only
                             config = AIConfig()
                             proofread_processor = AITextProcessor(
                                 config=config,
                                 model_id=ai_processor.provider.model_id,
-                                mode="proofread",
+                                mode="proofread",  # Use proofread-only mode
                                 source_lang=ai_processor.source_lang,
                                 target_lang=None
                             )
 
                             proofread_text, pr_error = ai_translate(to_process, proofread_processor)
+                            print(f"[DEBUG] Proofread result: {proofread_text[:100]}...", flush=True)
                             if pr_error:
                                 print(f"AI Proofread Error: {pr_error}", flush=True)
 
@@ -540,12 +557,13 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             translate_processor = AITextProcessor(
                                 config=config,
                                 model_id=ai_processor.provider.model_id,
-                                mode="translate",
+                                mode="translate",  # Use translate-only mode
                                 source_lang=ai_processor.source_lang,
                                 target_lang=ai_processor.target_lang
                             )
 
                             translate_text, tr_error = ai_translate(proofread_text, translate_processor)
+                            print(f"[DEBUG] Translate result: {translate_text[:100]}...", flush=True)
                             if tr_error:
                                 print(f"AI Translate Error: {tr_error}", flush=True)
 
@@ -554,6 +572,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             last_process_time = time.time()  # Reset timer after processing
 
                             # Send proofread to pr queue, translation to tl queue
+                            print(f"[DEBUG] Sending proofread to pr_queue: {bool(prres_queue)}", flush=True)
+                            print(f"[DEBUG] Sending translation to tl_queue", flush=True)
                             if proofread_text:
                                 prres_queue.put((proofread_text + separator, ""))
                             if translate_text:
@@ -597,11 +617,8 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         # Process any remaining accumulated text on exit
         if ai_processor and accumulated_done and accumulated_done.strip():
-            if prres_queue and ai_processor.mode == "proofread_translate":
+            if prres_queue and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                 # Make TWO separate calls for proofread+translate mode
-                from ai_config import AIConfig
-                from ai_provider import AITextProcessor
-
                 config = AIConfig()
                 proofread_processor = AITextProcessor(
                     config=config,
