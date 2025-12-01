@@ -1433,6 +1433,10 @@ class App(tk.Tk):
         self.device_combo.state(("disabled",))
         self.autotype_mode.state(("disabled",))
 
+        # Lock translation language dropdowns
+        self.source_combo.state(("disabled",))
+        self.target_combo.state(("disabled",))
+
         # Lock AI settings
         if self.ai_available:
             # Get current AI state
@@ -1474,6 +1478,10 @@ class App(tk.Tk):
         self.model_combo.state(("!disabled",))
         self.device_combo.state(("readonly",))
         self.autotype_mode.state(("readonly",))
+
+        # Unlock translation language dropdowns
+        self.source_combo.state(("readonly",))
+        self.target_combo.state(("readonly",))
 
         # Unlock AI settings
         if self.ai_available:

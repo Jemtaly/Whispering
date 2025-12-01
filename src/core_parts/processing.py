@@ -24,7 +24,8 @@ from .audio_devices import (
 
 def translate(text, source, target, timeout):
     if target is None:
-        return [(text, "Target language is not specified.")]
+        # No target language specified - return original text without error
+        return [(text, text)]
     try:
         url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl={}&tl={}&dt=t&q={}".format(source or "auto", target, quote(text))
         ans = requests.get(url, timeout=timeout).json()[0] or []
