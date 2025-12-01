@@ -407,7 +407,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None, auto_stop_enabled=False, auto_stop_minutes=5):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None, auto_stop_enabled=False, auto_stop_minutes=5, manual_trigger=None):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -509,19 +509,27 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 silence_elapsed = time.time() - last_activity_time
                 silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
 
+                # Manual trigger - process immediately when requested
+                manual_trigger_requested = manual_trigger and manual_trigger[0]
+                if manual_trigger_requested and accumulated_done:
+                    print("[DEBUG] Manual AI trigger detected, processing immediately", flush=True)
+                    manual_trigger[0] = False  # Reset flag
+
                 # Process if ANY of these conditions are met:
                 # 1. Normal case: 150+ chars AND paragraph break
                 # 2. Fallback case 1: 400+ chars (even without paragraph break)
                 # 3. Fallback case 2: Time threshold reached (when in time mode)
                 # 4. Fallback case 3: Word count threshold reached (when in words mode)
                 # 5. Fallback case 4: Silence timeout reached (no speech for X seconds)
+                # 6. Fallback case 5: Manual trigger requested
                 should_process = (
                     accumulated_done and
                     ((has_min_chars and has_paragraph_break) or
                      has_max_chars or
                      time_threshold_reached or
                      word_threshold_reached or
-                     silence_threshold_reached)
+                     silence_threshold_reached or
+                     manual_trigger_requested)
                 )
 
                 if should_process:
