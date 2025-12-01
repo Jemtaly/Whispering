@@ -407,7 +407,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None, auto_stop_enabled=False, auto_stop_minutes=5):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -470,7 +470,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         PROCESS_INTERVAL_SECONDS = ai_process_interval if ai_trigger_mode == "time" else float('inf')  # Already in seconds
         PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
         SILENCE_TIMEOUT = silence_timeout  # Flush after this many seconds of silence
-        AUTO_STOP_DURATION = 300  # Auto-stop after 5 minutes (300 seconds) of running
+        AUTO_STOP_DURATION = auto_stop_minutes * 60 if auto_stop_enabled else float('inf')  # Convert minutes to seconds
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -478,9 +478,9 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
             # Track last curr_src for exit processing
             last_curr_src = curr_src
 
-            # Check for auto-stop (5 minutes)
-            if time.time() - start_time >= AUTO_STOP_DURATION:
-                print("[INFO] Auto-stopping after 5 minutes", flush=True)
+            # Check for auto-stop (only if enabled AND no activity for specified duration)
+            if auto_stop_enabled and (time.time() - last_activity_time >= AUTO_STOP_DURATION):
+                print(f"[INFO] Auto-stopping after {auto_stop_minutes} minutes of inactivity", flush=True)
                 ready[0] = False  # Signal stop
                 break
 
@@ -619,9 +619,13 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             separator = '\n\n' if has_paragraph_break else ' '
                             last_process_time = time.time()  # Reset timer after processing
 
-                            # Send the NEW processed chunk - ONLY send when we have processed text
-                            print(f"[DEBUG] Sending single AI result to TL_QUEUE", flush=True)
-                            tlres_queue.put((processed + separator, ""))
+                            # Send the NEW processed chunk to the correct queue based on mode
+                            if ai_processor.mode == "proofread" and prres_queue is not None:
+                                print(f"[DEBUG] Sending proofread result to PR_QUEUE", flush=True)
+                                prres_queue.put((processed + separator, ""))
+                            else:
+                                print(f"[DEBUG] Sending result to TL_QUEUE", flush=True)
+                                tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:

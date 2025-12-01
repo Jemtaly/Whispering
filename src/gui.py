@@ -306,8 +306,18 @@ class App(tk.Tk):
         self.ts_count_label = ttk.Label(ts_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.ts_count_label.pack(side="right")
 
-        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
-        self.ts_text.grid(row=1, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        ts_frame = ttk.Frame(self.text_frame)
+        ts_frame.grid(row=1, column=0, sticky="nsew")
+        ts_frame.columnconfigure(0, weight=1)
+        ts_frame.rowconfigure(0, weight=1)
+
+        self.ts_text = Text(ts_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
+        self.ts_text.grid(row=0, column=0, sticky="nsew")
+
+        ts_scrollbar = ttk.Scrollbar(ts_frame, command=self.ts_text.yview)
+        ts_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.ts_text.config(yscrollcommand=ts_scrollbar.set)
 
         # Proofread output (middle) - header frame with label and count
         pr_header = ttk.Frame(self.text_frame)
@@ -317,8 +327,18 @@ class App(tk.Tk):
         self.pr_count_label = ttk.Label(pr_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.pr_count_label.pack(side="right")
 
-        self.pr_text = Text(self.text_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
-        self.pr_text.grid(row=3, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        pr_frame = ttk.Frame(self.text_frame)
+        pr_frame.grid(row=3, column=0, sticky="nsew")
+        pr_frame.columnconfigure(0, weight=1)
+        pr_frame.rowconfigure(0, weight=1)
+
+        self.pr_text = Text(pr_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
+        self.pr_text.grid(row=0, column=0, sticky="nsew")
+
+        pr_scrollbar = ttk.Scrollbar(pr_frame, command=self.pr_text.yview)
+        pr_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.pr_text.config(yscrollcommand=pr_scrollbar.set)
 
         # Disable proofread window by default (enable when AI proofread+translate is active)
         # Keep visible but grayed out
@@ -332,8 +352,18 @@ class App(tk.Tk):
         self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.tl_count_label.pack(side="right")
 
-        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
-        self.tl_text.grid(row=5, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        tl_frame = ttk.Frame(self.text_frame)
+        tl_frame.grid(row=5, column=0, sticky="nsew")
+        tl_frame.columnconfigure(0, weight=1)
+        tl_frame.rowconfigure(0, weight=1)
+
+        self.tl_text = Text(tl_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
+        self.tl_text.grid(row=0, column=0, sticky="nsew")
+
+        tl_scrollbar = ttk.Scrollbar(tl_frame, command=self.tl_text.yview)
+        tl_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tl_text.config(yscrollcommand=tl_scrollbar.set)
 
         # Store references to show/hide proofread window dynamically
         self.pr_header = pr_header
@@ -360,8 +390,7 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)  # Controls column expands in minimal mode
             self.columnconfigure(1, weight=0)  # Text column hidden
 
-        self.rowconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)  # Main row for both frames
 
         # Row counter for controls_frame
         row = 0
@@ -741,6 +770,51 @@ class App(tk.Tk):
             ai_enabled = self.settings.get("ai_enabled", False)
             if ai_enabled:
                 self.ai_check.state(("selected",))
+
+            # Load AI mode
+            ai_mode = self.settings.get("ai_mode", "Proofread")
+            try:
+                mode_values = self.ai_mode_combo.cget("values")
+                if ai_mode in mode_values:
+                    self.ai_mode_combo.set(ai_mode)
+            except:
+                pass
+
+            # Load AI model selection
+            ai_model_index = self.settings.get("ai_model_index", 0)
+            try:
+                if 0 <= ai_model_index < len(self.ai_model_combo.cget("values")):
+                    self.ai_model_combo.current(ai_model_index)
+            except:
+                pass
+
+            # Load AI trigger mode
+            ai_trigger_mode = self.settings.get("ai_trigger_mode", "time")
+            try:
+                trigger_values = self.ai_trigger_combo.cget("values")
+                trigger_display = ai_trigger_mode.capitalize()
+                if trigger_display in trigger_values:
+                    self.ai_trigger_combo.set(trigger_display)
+            except:
+                pass
+
+            # Load AI interval (convert seconds to label)
+            ai_process_interval = self.settings.get("ai_process_interval", 20)
+            try:
+                # Find the label that matches this interval value
+                for label, value in self.ai_interval_values_map.items():
+                    if int(value) == ai_process_interval:
+                        self.ai_interval_combo.set(label)
+                        break
+            except:
+                pass
+
+            # Load AI words
+            ai_process_words = self.settings.get("ai_process_words", 150)
+            try:
+                self.ai_words_spin.set(ai_process_words)
+            except:
+                pass
 
         # Set initial window geometry based on mode
         if self.text_visible:
@@ -1122,6 +1196,27 @@ class App(tk.Tk):
             try:
                 ai_enabled = "selected" in self.ai_check.state()
                 self.settings.set("ai_enabled", ai_enabled)
+
+                # Save AI mode
+                ai_mode = self.ai_mode_combo.get()
+                self.settings.set("ai_mode", ai_mode)
+
+                # Save AI model selection
+                ai_model_index = self.ai_model_combo.current()
+                self.settings.set("ai_model_index", ai_model_index)
+
+                # Save AI trigger mode and interval/words
+                ai_trigger_mode = self.ai_trigger_combo.get().lower()
+                self.settings.set("ai_trigger_mode", ai_trigger_mode)
+
+                # Save interval value (convert from label to seconds)
+                interval_label = self.ai_interval_combo.get()
+                ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))
+                self.settings.set("ai_process_interval", ai_process_interval)
+
+                # Save words value
+                ai_process_words = int(self.ai_words_spin.get())
+                self.settings.set("ai_process_words", ai_process_words)
             except Exception as e:
                 print(f"Error saving AI settings: {e}")
 
@@ -1234,7 +1329,11 @@ class App(tk.Tk):
         ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
         ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
-        # Check if we need to enable proofread window (for AI proofread+translate mode)
+        # Get auto-stop parameters from settings
+        auto_stop_enabled = self.settings.get("auto_stop_enabled", False)
+        auto_stop_minutes = self.settings.get("auto_stop_minutes", 5)
+
+        # Check if we need to enable proofread window (for AI proofread+translate or proofread-only modes)
         prres_queue = None
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
@@ -1246,7 +1345,9 @@ class App(tk.Tk):
             self.ai_proofread_buttons_frame.grid()
         elif ai_processor and ai_processor.mode == "proofread":
             # Enable proofread window for proofread-only mode, show buttons
+            prres_queue = self.pr_text.res_queue  # FIX: Set queue for proofread-only mode
             print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
+            print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
             self.pr_text.config(state="normal", background="white")
             self.ai_proofread_buttons_frame.grid()
         else:
@@ -1255,7 +1356,7 @@ class App(tk.Tk):
             self.pr_text.config(state="disabled", background="#f0f0f0")
             self.ai_proofread_buttons_frame.grid_remove()
 
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue}, daemon=True).start()
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue, 'auto_stop_enabled': auto_stop_enabled, 'auto_stop_minutes': auto_stop_minutes}, daemon=True).start()
         self.starting()
         self.update_level()
 
