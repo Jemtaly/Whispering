@@ -7,240 +7,12 @@ import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
 
 import core
-from cmque import PairDeque, Queue
 from settings import Settings
+from gui_parts.help_dialog import HelpDialog, MODEL_VRAM
+from gui_parts.text_widget import Text
 
 
-class HelpDialog:
-    """Help dialog with detailed information."""
 
-    # Track open dialogs for toggle behavior
-    _open_dialogs = {}
-
-    # Compact help text for each section
-    HELP_TEXT = {
-        "model": """Model: Whisper model size (tiny→large-v3, larger=more accurate)
-
-VAD: Voice Activity Detection (filters silence/noise)
-
-¶: Adaptive paragraph detection (auto line breaks by pauses)
-
-⌨: Auto-type mode selector
-  • Off - No auto-typing
-  • Whisper - Type raw transcription immediately
-  • Translation - Type Google Translate output (1-2 sec delay)
-  • AI - Type AI-processed output (longer delay based on trigger)
-
-Dev: Inference device (cuda=GPU, cpu=CPU, auto=best)
-
-Mem: Context segments 1-10 (higher=better context, slower)
-
-Pat: Patience seconds (wait time before finalizing segment)
-
-Time: Translation timeout seconds""",
-
-        "translate": """Source: Source language (auto=detect, or select specific)
-
-Target: Target language (none=disabled, or select for Google Translate)
-
-Note: AI Processing overrides Google Translate when enabled.""",
-
-        "ai": """Enable AI: Intelligent proofreading and translation
-
-Mode: Proofread | Translate | Proofread+Translate
-
-Model: AI model selection (larger=more capable, higher cost)
-
-Trigger: Time (every N min) | Words (every N words)
-
-Setup: Add OPENROUTER_API_KEY to .env
-See AI_SETUP.md for details.""",
-
-        "tts": """Enable TTS: Convert text to speech
-
-Voice: Browse=upload ref audio for cloning | Clear=default
-
-Save File: Auto-save to tts_output/ with timestamp
-
-Format: WAV (lossless) | OGG (compressed)
-
-Setup: See INSTALL_TTS.md"""
-    }
-
-    @staticmethod
-    def show(parent, section):
-        """Show help dialog for a section with toggle behavior."""
-        if section not in HelpDialog.HELP_TEXT:
-            return
-
-        # Toggle: if dialog is already open for this section, close it
-        if section in HelpDialog._open_dialogs:
-            try:
-                HelpDialog._open_dialogs[section].destroy()
-                del HelpDialog._open_dialogs[section]
-            except:
-                pass
-            return
-
-        # Create new dialog window
-        dialog = tk.Toplevel(parent)
-        dialog.title(f"Help - {section.title()}")
-        dialog.geometry("450x280")
-        dialog.resizable(False, False)
-
-        # Create text widget with scrollbar
-        text_frame = ttk.Frame(dialog)
-        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        scrollbar = ttk.Scrollbar(text_frame)
-        scrollbar.pack(side="right", fill="y")
-
-        text_widget = tk.Text(text_frame, wrap="word", font=('TkDefaultFont', 9),
-                             yscrollcommand=scrollbar.set, padx=8, pady=8)
-        text_widget.pack(side="left", fill="both", expand=True)
-        scrollbar.config(command=text_widget.yview)
-
-        # Insert help text
-        text_widget.insert("1.0", HelpDialog.HELP_TEXT[section])
-        text_widget.config(state="disabled")  # Read-only
-
-        # Track dialog
-        HelpDialog._open_dialogs[section] = dialog
-
-        # Click outside to close functionality
-        def on_focus_out(event):
-            # Close dialog when clicking outside
-            try:
-                if dialog.winfo_exists():
-                    dialog.destroy()
-                    if section in HelpDialog._open_dialogs:
-                        del HelpDialog._open_dialogs[section]
-            except:
-                pass
-
-        # Cleanup on close
-        def on_close():
-            try:
-                if section in HelpDialog._open_dialogs:
-                    del HelpDialog._open_dialogs[section]
-                dialog.destroy()
-            except:
-                pass
-
-        dialog.protocol("WM_DELETE_WINDOW", on_close)
-
-        # Bind focus out after a delay (to avoid immediate close on creation)
-        dialog.after(200, lambda: dialog.bind("<FocusOut>", on_focus_out))
-
-
-# Model VRAM estimates (based on faster-whisper benchmarks)
-MODEL_VRAM = {
-    "tiny": "~1 GB VRAM",
-    "base": "~1.5 GB VRAM",
-    "small": "~2 GB VRAM",
-    "medium": "~3 GB VRAM",
-    "large-v1": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
-    "large-v2": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
-    "large-v3": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
-    "large": "~4.5 GB VRAM (fp16) / ~3 GB (int8)",
-}
-
-
-class Text(tk.Text):
-    def __init__(self, master, on_new_text=None, on_text_changed=None):
-        super().__init__(master)
-        self.res_queue = Queue(PairDeque())
-        self.on_new_text = on_new_text  # Callback for NEW text only
-        self.on_text_changed = on_text_changed  # Callback when any text changes
-        self.tag_config("done", foreground="black")
-        self.tag_config("curr", foreground="blue", underline=True)
-        self.insert("end", "  ", "done")
-        self.record = self.index("end-1c")
-        self.prev_done = ""  # Track what we've already processed
-        self.see("end")
-        # Keep text editable! No state="disabled"
-        self.poll()
-
-    def poll(self):
-        text_changed = False
-        queue_name = None
-        # Identify which Text widget this is for debug purposes
-        try:
-            if hasattr(self, 'winfo_parent'):
-                parent = self.nametowidget(self.winfo_parent())
-                if hasattr(parent, 'winfo_parent'):
-                    grandparent = parent.nametowidget(parent.winfo_parent())
-                    # Try to determine if this is the proofread text widget
-                    if 'pr_text' in str(self):
-                        queue_name = "PR_QUEUE"
-                    elif 'tl_text' in str(self):
-                        queue_name = "TL_QUEUE"
-                    elif 'ts_text' in str(self):
-                        queue_name = "TS_QUEUE"
-        except:
-            pass
-
-        while self.res_queue:
-            # Temporarily enable widget if disabled (for programmatic updates)
-            was_disabled = str(self.cget("state")) == "disabled"
-            if was_disabled:
-                self.config(state="normal")
-
-            if res := self.res_queue.get():
-                done, curr = res
-                # Calculate NEW text (what we haven't processed yet)
-                new_text = ""
-                if len(done) > len(self.prev_done):
-                    new_text = done[len(self.prev_done):]
-                self.prev_done = done
-
-                if queue_name:
-                    print(f"[TEXT-{queue_name}] Received: done={done[:50]}... curr={curr[:50]}...", flush=True)
-                    if new_text:
-                        print(f"[TEXT-{queue_name}] NEW text: {new_text[:100]}...", flush=True)
-
-                # Update display
-                self.delete(self.record, "end")
-                self.insert("end", done, "done")
-                self.record = self.index("end-1c")
-                self.insert("end", curr, "curr")
-                self.see("end")
-                text_changed = True
-
-                # Fire callback with only NEW text
-                if new_text and self.on_new_text:
-                    self.on_new_text(new_text)
-            else:
-                # Stop signal - finalize current line
-                done = self.get(self.record, "end-1c")
-                self.delete(self.record, "end")
-                self.insert("end", done, "done")
-                self.insert("end", "\n", "done")
-                self.insert("end", "  ", "done")
-                self.record = self.index("end-1c")
-                self.prev_done = ""  # Reset for next segment
-                self.see("end")
-                text_changed = True
-
-            # Restore disabled state if it was disabled
-            if was_disabled:
-                self.config(state="disabled")
-
-        # Fire text changed callback if text was modified
-        if text_changed and self.on_text_changed:
-            self.on_text_changed()
-
-        self.after(100, self.poll)
-
-    def clear(self):
-        """Clear all text and reset state."""
-        self.delete("1.0", "end")
-        self.insert("end", "  ", "done")
-        self.record = self.index("end-1c")
-        self.prev_done = ""
-        # Fire text changed callback after clearing
-        if self.on_text_changed:
-            self.on_text_changed()
 
 
 class App(tk.Tk):
@@ -260,14 +32,14 @@ class App(tk.Tk):
 
         # Set minimum window size - will adjust based on mode
         # For minimal mode: calculate based on controls, for full mode add space for text
-        # Minimal mode: 400x950 minimum (never go below this)
-        # Full mode: 900x950 gives space for text panels
+        # Minimal mode: 400x980 minimum (never go below this)
+        # Full mode: 900x980 gives space for text panels
         if self.text_visible:
-            self.minsize(900, 950)  # Full mode - more vertical space for text
-            self.maxsize(10000, 950)  # Limit max height to 950px
+            self.minsize(900, 980)  # Full mode - more vertical space for text
+            self.maxsize(10000, 980)  # Limit max height to 980px
         else:
-            self.minsize(400, 950)  # Minimal mode - never below 400x950
-            self.maxsize(10000, 950)  # Limit max height to 950px
+            self.minsize(400, 980)  # Minimal mode - never below 400x980
+            self.maxsize(10000, 980)  # Limit max height to 980px
 
         # Try to load AI configuration
         self.ai_config = None
@@ -915,9 +687,9 @@ class App(tk.Tk):
 
         # Set initial window geometry based on mode
         if self.text_visible:
-            self.geometry("900x950")  # Full mode
+            self.geometry("900x980")  # Full mode
         else:
-            self.geometry("400x950")  # Minimal mode (default)
+            self.geometry("400x980")  # Minimal mode (default)
 
         # Save settings on window close
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -1259,12 +1031,12 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)
             self.columnconfigure(1, weight=0)  # Text column won't expand
 
-            # Adjust minimum size for minimal mode (never below 400x950)
-            self.minsize(400, 950)
-            self.maxsize(10000, 950)  # Limit max height to 950px
+            # Adjust minimum size for minimal mode (never below 400x980)
+            self.minsize(400, 980)
+            self.maxsize(10000, 980)  # Limit max height to 980px
 
             # Resize window to minimal width
-            self.geometry("400x950")
+            self.geometry("400x980")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
@@ -1276,11 +1048,11 @@ class App(tk.Tk):
             self.columnconfigure(1, weight=1)  # Text column expands
 
             # Restore minimum size for full mode
-            self.minsize(900, 950)
-            self.maxsize(10000, 950)  # Limit max height to 950px
+            self.minsize(900, 980)
+            self.maxsize(10000, 980)  # Limit max height to 980px
 
-            # Resize window to show both columns (max height 950px)
-            self.geometry("900x950")
+            # Resize window to show both columns (max height 980px)
+            self.geometry("900x980")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
