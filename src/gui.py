@@ -195,7 +195,7 @@ class App(tk.Tk):
         # Section header with help button
         model_header = ttk.Frame(self.controls_frame)
         model_header.grid(row=row, column=0, sticky="ew", pady=(0, 3))
-        ttk.Label(model_header, text="Model Settings", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
+        ttk.Label(model_header, text="Model Settings Speech-to-Text", font=('TkDefaultFont', 9, 'bold')).pack(side="left")
         help_btn = ttk.Button(model_header, text="?", width=2, command=lambda: HelpDialog.show(self, "model"))
         help_btn.pack(side="right")
         row += 1
@@ -470,15 +470,6 @@ class App(tk.Tk):
         self.ai_output_buttons_frame = ai_output_buttons_frame
         # Hide by default (only show when AI is active)
         ai_output_buttons_frame.grid_remove()
-
-        # === PROMPT ===
-        prompt_frame = ttk.Frame(self.controls_frame)
-        prompt_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
-        row += 1
-
-        ttk.Label(prompt_frame, text="Prompt:").pack(side="top", anchor="w", pady=(0, 2))
-        self.prompt_entry = ttk.Entry(prompt_frame, state="normal")
-        self.prompt_entry.pack(side="top", fill="x")
 
         # === TTS SECTION ===
         ttk.Separator(self.controls_frame, orient="horizontal").grid(row=row, column=0, sticky="ew", pady=(10, 5))
@@ -967,7 +958,7 @@ class App(tk.Tk):
                 self.ai_translate_only_check.state(("!selected",))
             if translate_output:
                 self.ai_translate_check.state(("!selected",))
-            self.status_label.config(text="⚠ Please select a target language first", foreground="red")
+            self.status_label.config(text="⚠ Please select translation target language first", foreground="red")
             return
 
         # Auto-enable AI if translation features are used
@@ -1023,8 +1014,14 @@ class App(tk.Tk):
         self.vram_label.config(text=vram_info)
 
     def on_target_changed(self, event=None):
-        """Handle target language changes - can add validation here if needed."""
-        pass  # No longer needed with new UI design
+        """Handle target language changes - turn off Translate Output if target is none."""
+        if not self.ai_available:
+            return
+
+        target = self.target_combo.get()
+        if target == "none" or target is None:
+            # Turn off Translate Output checkbox if target is none
+            self.ai_translate_check.state(("!selected",))
 
     def on_trigger_changed(self, event=None):
         """Update visible controls based on trigger mode selection."""
@@ -1302,7 +1299,7 @@ class App(tk.Tk):
         memory = int(self.memory_spin.get())
         patience = float(self.patience_spin.get())
         timeout = float(self.timeout_spin.get())
-        prompt = self.prompt_entry.get()
+        prompt = ""  # Removed prompt entry - using custom tasks instead
         source = None if self.source_combo.get() == "auto" else self.source_combo.get()
         target = None if self.target_combo.get() == "none" else self.target_combo.get()
         device = self.device_combo.get()
