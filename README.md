@@ -28,7 +28,7 @@ cd Whispering
 - **Minimal mode** - starts compact (400x950px), expandable to show all text windows
 - **Smart window management** - 950px max height, all windows always visible (grayed when disabled)
 - **Settings persistence** - remember preferences including window layout and visibility
-- **5-minute auto-stop** - automatically stops recording after 5 minutes of continuous use
+- **Configurable auto-stop** - optional timeout after specified minutes of inactivity (default: disabled)
 - **GPU acceleration** with CUDA support for fast inference
 - **VRAM estimates** - see memory requirements for each model
 - **Adaptive paragraph detection** based on speech pause patterns
@@ -46,15 +46,19 @@ Whispering now includes powerful AI-powered text processing capabilities:
 - **Intelligent Proofreading** - Fix spelling, grammar, and punctuation errors in real-time
 - **Context-Aware Translation** - Better translations that understand speech patterns
 - **Multiple AI Models** - Choose from Claude, GPT-4, Gemini, Llama, and more via OpenRouter
-- **Smart Text Processing** - Configurable triggers (5s-2min intervals or word count-based)
-- **Processing Modes** - Proofread only, translate only, or combined processing
-  - **Proofread mode** - Corrected text appears in Proofread Output window
-  - **Translate mode** - Translated text appears in Translation Output window
-  - **Proofread+Translate mode** - Sequential dual-call processing:
-    1. First call proofreads the text → Proofread Output window
-    2. Second call translates the proofread text → Translation Output window
+- **Custom AI Personas** - Define your own processing tasks (story narration, meeting notes, code docs, etc.)
+  - Built-in proofread persona included
+  - Add custom personas via `config/custom_personas.yaml`
+  - Each persona can have custom system prompts and descriptions
+- **Flexible Trigger Modes**:
+  - **Automatic mode** - Process text at intervals (5s-2min) or word count thresholds (50-500 words)
+  - **Manual mode** - Process text on-demand with "⚡ Process Now" button
+- **Processing Modes**:
+  - **Task mode** - Apply proofread or custom persona processing → AI Output window
+  - **Translate-only mode (1:1)** - Direct translation without AI processing → Translation Output window
+  - **Task + Translate** - Process with persona, then translate → both AI Output and Translation windows
 - **Input Validation** - Prevents selecting translation modes without target language
-- **Auto-stop Safety** - Automatically stops after 5 minutes to prevent runaway processing
+- **Configurable Auto-stop** - Optional timeout after specified minutes of inactivity (disabled by default)
 
 See [AI_SETUP.md](AI_SETUP.md) for complete setup instructions and configuration options.
 
@@ -190,12 +194,25 @@ The GUI uses a two-column layout:
 - **Target** - Target language (no translation if set to "none")
 
 **AI Processing Section** (when AI is available):
-- **Enable AI** - Turn on AI-powered proofreading/translation
-- **Mode** - Proofread, Translate, or Proofread+Translate
-  - Validation prevents selecting translate modes without target language
+- **Enable AI** - Turn on AI-powered text processing
+- **Task** - Select processing persona (Proofread or custom personas from config)
+  - Built-in: Proofread (fix spelling and grammar only)
+  - Custom personas loaded from `config/custom_personas.yaml` (see `config/custom_personas.yaml.example`)
+- **Translate output** - Enable translation of AI-processed text
+- **Translate Only (1:1)** - Direct translation mode without AI processing
+  - When checked: disables Task and Translate output options
+  - Provides simple 1:1 translation like Google Translate
 - **Model** - Select AI model (Claude, GPT-4, Gemini, etc.)
-- **Trigger** - Time-based (5s-2min) or word count-based processing
-  - Intervals: 5s, 10s, 15s, 20s, 25s, 30s, 45s, 1m, 1.5m, 2m
+- **Trigger Mode** - Choose between manual or automatic processing:
+  - **Manual mode** (left side):
+    - Check "Manual mode" to enable on-demand processing
+    - Click "⚡ Process Now" button when ready to process accumulated text
+    - Disables automatic triggers while enabled
+  - **Automatic mode** (right side):
+    - **Trigger**: Time-based or word count-based processing
+    - **Interval**: 5s, 10s, 15s, 20s, 25s, 30s, 45s, 1m, 1.5m, 2m
+    - **words**: Word count threshold (50-500 words)
+    - Disabled while Manual mode is active
 - **Copy/Cut Buttons** - Quick text transfer with character/word counts
   - Displayed for each active output window
   - Shows blue-colored counts for easy visibility
@@ -204,16 +221,22 @@ The GUI uses a two-column layout:
 **Status & Controls:**
 - **Start/Stop** - Control button for transcription
 - **Level** - Real-time audio input level meter
+- **Auto-stop** - Optional timeout after inactivity
+  - Check to enable auto-stop feature
+  - Set minutes of inactivity before stopping (1-60 minutes)
+  - Disabled by default
 - **Status** - Error messages and AI status
 
 **Text Windows** (can be hidden with "Hide Text ◀"):
-- **Whisper Output** - Raw transcription with editable text
-- **Proofread Output** - AI-corrected text with paragraph formatting
-  - Grayed out when not using AI proofread modes
-  - Enabled with white background when AI proofread is active
-- **Translation Output** - Translated or AI-processed text
+- **Whisper Output** - Raw transcription with editable text and scrollbar
+- **AI Output** - AI-processed text with paragraph formatting and scrollbar
+  - Grayed out when AI is disabled
+  - Shows proofread or custom persona output when AI Task is selected
+  - Enabled with white background when AI processing is active
+- **Translation Output** - Translated text with scrollbar
   - Shows Google Translate output when AI is disabled
   - Shows AI translation when AI translate mode is active
+  - Shows translate-only output when "Translate Only (1:1)" is checked
 
 All three windows are always visible but disabled (grayed) when not in use. This provides clear visual feedback about which processing modes are active.
 
@@ -511,9 +534,11 @@ Whispering/
 │   ├── debug_audio.py      # Audio device diagnostics
 │   └── debug_cuda.py       # CUDA debugging utility
 │
-├── config/                 # Configuration files
-│   ├── ai_config.yaml      # AI models and prompts configuration
-│   └── .env.example        # Example environment variables template
+├── config/                      # Configuration files
+│   ├── ai_config.yaml           # AI models and prompts configuration
+│   ├── custom_personas.yaml     # User-defined AI personas (gitignored)
+│   ├── custom_personas.yaml.example  # Example custom personas template
+│   └── .env.example             # Example environment variables template
 │
 ├── scripts/                # Shell scripts
 │   ├── install.sh          # Installation script
