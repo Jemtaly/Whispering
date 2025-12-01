@@ -1,5 +1,6 @@
 import tkinter as tk
 from cmque import PairDeque, Queue
+from debug import debug_print
 
 class Text(tk.Text):
     def __init__(self, master, on_new_text=None, on_text_changed=None):
@@ -50,9 +51,9 @@ class Text(tk.Text):
                 self.prev_done = done
 
                 if queue_name:
-                    print(f"[TEXT-{queue_name}] Received: done={done[:50]}... curr={curr[:50]}...", flush=True)
+                    debug_print(f"[TEXT-{queue_name}] Received: done={done[:50]}... curr={curr[:50]}...", flush=True)
                     if new_text:
-                        print(f"[TEXT-{queue_name}] NEW text: {new_text[:100]}...", flush=True)
+                        debug_print(f"[TEXT-{queue_name}] NEW text: {new_text[:100]}...", flush=True)
 
                 # Update display
                 self.delete(self.record, "end")

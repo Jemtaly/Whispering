@@ -7,6 +7,7 @@ import requests
 import sounddevice as sd
 from cmque import DataDeque, PairDeque, Queue
 from faster_whisper import WhisperModel
+from debug import debug_print
 
 # Import AI modules
 try:
@@ -179,7 +180,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
             # Check for auto-stop (only if enabled AND no activity for specified duration)
             if auto_stop_enabled and (time.time() - last_activity_time >= AUTO_STOP_DURATION):
-                print(f"[INFO] Auto-stopping after {auto_stop_minutes} minutes of inactivity", flush=True)
+                debug_print(f"[INFO] Auto-stopping after {auto_stop_minutes} minutes of inactivity", flush=True)
                 ready[0] = False  # Signal stop
                 break
 
@@ -199,7 +200,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 # Manual trigger - process immediately when requested
                 manual_trigger_requested = manual_trigger and manual_trigger[0]
                 if manual_trigger_requested and accumulated_done:
-                    print("[DEBUG] Manual AI trigger detected, processing immediately", flush=True)
+                    debug_print("[DEBUG] Manual AI trigger detected, processing immediately", flush=True)
                     manual_trigger[0] = False  # Reset flag
 
                 # Determine automatic triggers based on mode
@@ -253,29 +254,29 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
                     if to_process:
                         # Process with AI - DETAILED DEBUG
-                        print(f"\n[DEBUG] ========== CONDITION CHECK ==========", flush=True)
-                        print(f"[DEBUG] 1. prres_queue = {prres_queue}", flush=True)
-                        print(f"[DEBUG]    prres_queue is not None = {prres_queue is not None}", flush=True)
-                        print(f"[DEBUG]    prres_queue bool = {bool(prres_queue)} (NOTE: Queue.__bool__ returns False when empty!)", flush=True)
-                        print(f"[DEBUG] 2. ai_processor = {ai_processor}", flush=True)
-                        print(f"[DEBUG]    ai_processor bool = {bool(ai_processor)}", flush=True)
+                        debug_print(f"\n[DEBUG] ========== CONDITION CHECK ==========", flush=True)
+                        debug_print(f"[DEBUG] 1. prres_queue = {prres_queue}", flush=True)
+                        debug_print(f"[DEBUG]    prres_queue is not None = {prres_queue is not None}", flush=True)
+                        debug_print(f"[DEBUG]    prres_queue bool = {bool(prres_queue)} (NOTE: Queue.__bool__ returns False when empty!)", flush=True)
+                        debug_print(f"[DEBUG] 2. ai_processor = {ai_processor}", flush=True)
+                        debug_print(f"[DEBUG]    ai_processor bool = {bool(ai_processor)}", flush=True)
                         if ai_processor:
-                            print(f"[DEBUG] 3. ai_processor.mode = '{ai_processor.mode}'", flush=True)
-                            print(f"[DEBUG]    mode == 'proofread_translate' = {ai_processor.mode == 'proofread_translate'}", flush=True)
-                        print(f"[DEBUG] 4. AI_AVAILABLE = {AI_AVAILABLE}", flush=True)
+                            debug_print(f"[DEBUG] 3. ai_processor.mode = '{ai_processor.mode}'", flush=True)
+                            debug_print(f"[DEBUG]    mode == 'proofread_translate' = {ai_processor.mode == 'proofread_translate'}", flush=True)
+                        debug_print(f"[DEBUG] 4. AI_AVAILABLE = {AI_AVAILABLE}", flush=True)
 
                         # Check combined condition (FIX: use 'is not None' instead of bool check!)
                         combined = bool(prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE)
-                        print(f"[DEBUG] 5. COMBINED CONDITION = {combined}", flush=True)
-                        print(f"[DEBUG] ======================================\n", flush=True)
+                        debug_print(f"[DEBUG] 5. COMBINED CONDITION = {combined}", flush=True)
+                        debug_print(f"[DEBUG] ======================================\n", flush=True)
 
                         if prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                             # Make TWO separate calls for proofread+translate mode
-                            print(f"[DEBUG] ========== EXECUTING TWO-CALL AI PROCESSING ==========", flush=True)
-                            print(f"[DEBUG] Input text: {to_process[:100]}...", flush=True)
+                            debug_print(f"[DEBUG] ========== EXECUTING TWO-CALL AI PROCESSING ==========", flush=True)
+                            debug_print(f"[DEBUG] Input text: {to_process[:100]}...", flush=True)
 
                             # FIRST CALL: Proofread only
-                            print(f"[DEBUG] STEP 1: Creating proofread-only processor", flush=True)
+                            debug_print(f"[DEBUG] STEP 1: Creating proofread-only processor", flush=True)
                             config = AIConfig()
                             proofread_processor = AITextProcessor(
                                 config=config,
@@ -284,14 +285,14 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                                 source_lang=ai_processor.source_lang,
                                 target_lang=None
                             )
-                            print(f"[DEBUG] STEP 2: Calling AI for proofread", flush=True)
+                            debug_print(f"[DEBUG] STEP 2: Calling AI for proofread", flush=True)
                             proofread_text, pr_error = ai_translate(to_process, proofread_processor)
-                            print(f"[DEBUG] STEP 3: Proofread result: '{proofread_text[:150]}'...", flush=True)
+                            debug_print(f"[DEBUG] STEP 3: Proofread result: '{proofread_text[:150]}'...", flush=True)
                             if pr_error:
-                                print(f"[DEBUG] Proofread Error: {pr_error}", flush=True)
+                                debug_print(f"[DEBUG] Proofread Error: {pr_error}", flush=True)
 
                             # SECOND CALL: Translate the proofread text
-                            print(f"[DEBUG] STEP 4: Creating translate-only processor", flush=True)
+                            debug_print(f"[DEBUG] STEP 4: Creating translate-only processor", flush=True)
                             translate_processor = AITextProcessor(
                                 config=config,
                                 model_id=ai_processor.provider.model_id,
@@ -299,11 +300,11 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                                 source_lang=ai_processor.source_lang,
                                 target_lang=ai_processor.target_lang
                             )
-                            print(f"[DEBUG] STEP 5: Calling AI for translation (input=proofread text)", flush=True)
+                            debug_print(f"[DEBUG] STEP 5: Calling AI for translation (input=proofread text)", flush=True)
                             translate_text, tr_error = ai_translate(proofread_text, translate_processor)
-                            print(f"[DEBUG] STEP 6: Translation result: '{translate_text[:150]}'...", flush=True)
+                            debug_print(f"[DEBUG] STEP 6: Translation result: '{translate_text[:150]}'...", flush=True)
                             if tr_error:
-                                print(f"[DEBUG] Translation Error: {tr_error}", flush=True)
+                                debug_print(f"[DEBUG] Translation Error: {tr_error}", flush=True)
 
                             # Determine separators - use paragraph breaks for proofread for better readability
                             # Use smart separator for translation (paragraph break or space)
@@ -312,19 +313,19 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             last_process_time = time.time()  # Reset timer after processing
 
                             # Send proofread to pr queue, translation to tl queue
-                            print(f"[DEBUG] STEP 7: Sending to queues...", flush=True)
-                            print(f"[DEBUG]   - Sending proofread ({len(proofread_text)} chars) to PR_QUEUE", flush=True)
-                            print(f"[DEBUG]   - Sending translation ({len(translate_text)} chars) to TL_QUEUE", flush=True)
+                            debug_print(f"[DEBUG] STEP 7: Sending to queues...", flush=True)
+                            debug_print(f"[DEBUG]   - Sending proofread ({len(proofread_text)} chars) to PR_QUEUE", flush=True)
+                            debug_print(f"[DEBUG]   - Sending translation ({len(translate_text)} chars) to TL_QUEUE", flush=True)
                             if proofread_text:
                                 prres_queue.put((proofread_text + proofread_separator, ""))
-                                print(f"[DEBUG]   ✓ Sent to PR_QUEUE", flush=True)
+                                debug_print(f"[DEBUG]   ✓ Sent to PR_QUEUE", flush=True)
                             if translate_text:
                                 tlres_queue.put((translate_text + translation_separator, ""))
-                                print(f"[DEBUG]   ✓ Sent to TL_QUEUE", flush=True)
-                            print(f"[DEBUG] ========== TWO-CALL PROCESSING COMPLETE ==========", flush=True)
+                                debug_print(f"[DEBUG]   ✓ Sent to TL_QUEUE", flush=True)
+                            debug_print(f"[DEBUG] ========== TWO-CALL PROCESSING COMPLETE ==========", flush=True)
                         else:
                             # Single AI call (proofread-only or translate-only)
-                            print(f"[DEBUG] Using SINGLE AI call (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
+                            debug_print(f"[DEBUG] Using SINGLE AI call (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
                             processed, ai_error = ai_translate(to_process, ai_processor)
                             if ai_error:
                                 # Log error to console but continue with result
@@ -336,10 +337,10 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
                             # Send the NEW processed chunk to the correct queue based on mode
                             if ai_processor.mode == "proofread" and prres_queue is not None:
-                                print(f"[DEBUG] Sending proofread result to PR_QUEUE", flush=True)
+                                debug_print(f"[DEBUG] Sending proofread result to PR_QUEUE", flush=True)
                                 prres_queue.put((processed + separator, ""))
                             else:
-                                print(f"[DEBUG] Sending result to TL_QUEUE", flush=True)
+                                debug_print(f"[DEBUG] Sending result to TL_QUEUE", flush=True)
                                 tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
@@ -369,15 +370,15 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         # Combine accumulated_done with last_curr_src to ensure nothing is lost
         final_text = accumulated_done
         if last_curr_src and last_curr_src.strip():
-            print(f"[DEBUG] EXIT: Found curr_src text: '{last_curr_src.strip()}'", flush=True)
+            debug_print(f"[DEBUG] EXIT: Found curr_src text: '{last_curr_src.strip()}'", flush=True)
             final_text = accumulated_done + last_curr_src
 
         if ai_processor and final_text and final_text.strip():
-            print(f"[DEBUG] EXIT: Processing remaining text ({len(final_text)} chars)", flush=True)
-            print(f"[DEBUG] EXIT: Text = '{final_text[:200]}'...", flush=True)
+            debug_print(f"[DEBUG] EXIT: Processing remaining text ({len(final_text)} chars)", flush=True)
+            debug_print(f"[DEBUG] EXIT: Text = '{final_text[:200]}'...", flush=True)
             if prres_queue is not None and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
                 # Make TWO separate calls for proofread+translate mode
-                print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
+                debug_print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
                 config = AIConfig()
                 proofread_processor = AITextProcessor(
                     config=config,
@@ -388,7 +389,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 )
 
                 proofread_text, _ = ai_translate(final_text, proofread_processor)
-                print(f"[DEBUG] EXIT: Proofread result: '{proofread_text[:100]}'", flush=True)
+                debug_print(f"[DEBUG] EXIT: Proofread result: '{proofread_text[:100]}'", flush=True)
 
                 translate_processor = AITextProcessor(
                     config=config,
@@ -399,17 +400,17 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 )
 
                 translate_text, _ = ai_translate(proofread_text, translate_processor)
-                print(f"[DEBUG] EXIT: Translation result: '{translate_text[:100]}'", flush=True)
+                debug_print(f"[DEBUG] EXIT: Translation result: '{translate_text[:100]}'", flush=True)
 
                 if proofread_text:
                     prres_queue.put((proofread_text, ""))
-                    print(f"[DEBUG] EXIT: Sent proofread to PR_QUEUE", flush=True)
+                    debug_print(f"[DEBUG] EXIT: Sent proofread to PR_QUEUE", flush=True)
                 if translate_text:
                     tlres_queue.put((translate_text, ""))
-                    print(f"[DEBUG] EXIT: Sent translation to TL_QUEUE", flush=True)
+                    debug_print(f"[DEBUG] EXIT: Sent translation to TL_QUEUE", flush=True)
             else:
                 # Single AI call
-                print(f"[DEBUG] EXIT: Using single AI call", flush=True)
+                debug_print(f"[DEBUG] EXIT: Using single AI call", flush=True)
                 final_tgt, _ = ai_translate(final_text, ai_processor)
                 tlres_queue.put((final_tgt, ""))
 

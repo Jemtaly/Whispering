@@ -24,6 +24,9 @@ class App(tk.Tk):
         # Load settings first
         self.settings = Settings()
 
+        # Load debug mode from settings (default: False)
+        self.debug_enabled = self.settings.get("debug_enabled", False)
+
         # Load text visibility state from settings (default: False - start in minimal mode)
         self.text_visible = self.settings.get("text_visible", False)
 
@@ -720,6 +723,23 @@ class App(tk.Tk):
         except:
             pass
 
+        # Load translation language settings
+        try:
+            source_lang = self.settings.get("source_language", "auto")
+            target_lang = self.settings.get("target_language", "none")
+
+            # Set source language
+            source_values = self.source_combo.cget("values")
+            if source_lang in source_values:
+                self.source_combo.set(source_lang)
+
+            # Set target language
+            target_values = self.target_combo.cget("values")
+            if target_lang in target_values:
+                self.target_combo.set(target_lang)
+        except Exception as e:
+            print(f"Error loading language settings: {e}")
+
         # Set initial trigger field visibility based on trigger mode
         if self.ai_available:
             self.on_trigger_changed()
@@ -982,7 +1002,8 @@ class App(tk.Tk):
 
         # Set flag to request manual processing
         self.manual_trigger_requested[0] = True
-        print("[GUI] Manual AI processing requested", flush=True)
+        if self.debug_enabled:
+            print("[GUI] Manual AI processing requested", flush=True)
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
@@ -1219,6 +1240,15 @@ class App(tk.Tk):
             except Exception as e:
                 print(f"Error saving AI settings: {e}")
 
+        # Save translation language settings
+        try:
+            source_lang = self.source_combo.get()
+            target_lang = self.target_combo.get()
+            self.settings.set("source_language", source_lang)
+            self.settings.set("target_language", target_lang)
+        except Exception as e:
+            print(f"Error saving language settings: {e}")
+
         # Save auto-stop settings
         try:
             auto_stop_enabled = "selected" in self.autostop_check.state()
@@ -1375,7 +1405,8 @@ class App(tk.Tk):
             ai_trigger_mode = "manual"
             ai_process_interval = 999999  # Large value (won't be used)
             ai_process_words = None
-            print(f"[GUI] AI Trigger Mode: Manual", flush=True)
+            if self.debug_enabled:
+                print(f"[GUI] AI Trigger Mode: Manual", flush=True)
         else:
             # Automatic mode: use configured trigger settings
             if self.ai_available:
@@ -1387,10 +1418,11 @@ class App(tk.Tk):
             ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
             # Debug logging
-            if ai_trigger_mode == "time":
-                print(f"[GUI] AI Trigger Mode: Time, Interval: {ai_process_interval}s", flush=True)
-            else:
-                print(f"[GUI] AI Trigger Mode: Words, Word Count: {ai_process_words}", flush=True)
+            if self.debug_enabled:
+                if ai_trigger_mode == "time":
+                    print(f"[GUI] AI Trigger Mode: Time, Interval: {ai_process_interval}s", flush=True)
+                else:
+                    print(f"[GUI] AI Trigger Mode: Words, Word Count: {ai_process_words}", flush=True)
 
         # Get auto-stop parameters from GUI
         auto_stop_enabled = "selected" in self.autostop_check.state()
@@ -1401,21 +1433,24 @@ class App(tk.Tk):
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
             # Enable proofread window and show buttons
-            print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
-            print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
-            print(f"[GUI] self.pr_text.res_queue ID: {id(self.pr_text.res_queue)}", flush=True)
+            if self.debug_enabled:
+                print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
+                print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
+                print(f"[GUI] self.pr_text.res_queue ID: {id(self.pr_text.res_queue)}", flush=True)
             self.pr_text.config(state="normal", background="white")
             self.ai_output_buttons_frame.grid()
         elif ai_processor and ai_processor.mode == "proofread":
             # Enable proofread window for proofread-only mode, show buttons
             prres_queue = self.pr_text.res_queue  # FIX: Set queue for proofread-only mode
-            print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
-            print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
+            if self.debug_enabled:
+                print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
+                print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
             self.pr_text.config(state="normal", background="white")
             self.ai_output_buttons_frame.grid()
         else:
             # Disable proofread window and hide buttons (keep visible but grayed)
-            print(f"[GUI] Disabling proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
+            if self.debug_enabled:
+                print(f"[GUI] Disabling proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
             self.pr_text.config(state="disabled", background="#f0f0f0")
             self.ai_output_buttons_frame.grid_remove()
 
