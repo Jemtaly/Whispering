@@ -27,7 +27,7 @@ cd Whispering
 - **Two-column GUI layout** - organized controls with three labeled output windows
 - **Minimal mode** - starts compact (400x950px), expandable to show all text windows
 - **Smart window management** - 950px max height, all windows always visible (grayed when disabled)
-- **Settings persistence** - remember preferences including window layout and visibility
+- **Settings persistence** - remember preferences including window layout, visibility, and translation languages
 - **Configurable auto-stop** - optional timeout after specified minutes of inactivity (default: disabled)
 - **GPU acceleration** with CUDA support for fast inference
 - **VRAM estimates** - see memory requirements for each model
@@ -528,6 +528,7 @@ Whispering/
 │   ├── ai_provider.py      # OpenRouter AI integration
 │   ├── ai_config.py        # AI configuration loader
 │   ├── settings.py         # Settings persistence framework
+│   ├── debug.py            # Debug output control module
 │   ├── transcript_logger.py # Transcript logging to files
 │   ├── tts_controller.py   # Text-to-speech controller
 │   ├── tts_provider.py     # TTS provider interface
@@ -559,6 +560,47 @@ Whispering/
 ```
 
 See [STRUCTURE.md](STRUCTURE.md) for detailed documentation on the project organization.
+
+## Configuration
+
+### Settings File
+
+Whispering automatically saves your preferences to `whispering_settings.json` in the application directory. Settings are persisted across restarts including:
+
+- Window visibility state (minimal/full mode)
+- Selected microphone, model, and device
+- VAD, paragraph detection, and auto-type settings
+- Translation source and target languages
+- AI processing settings (model, persona, trigger mode, intervals)
+- TTS settings (enabled, source, save preferences)
+- Auto-stop configuration
+
+### Debug Mode
+
+Enable debug output to troubleshoot issues or understand application behavior. Debug mode is controlled via the settings file only (no GUI option).
+
+**To enable debug mode:**
+
+1. Edit `whispering_settings.json` (or create it if it doesn't exist)
+2. Add the following setting:
+   ```json
+   {
+     "debug_enabled": true
+   }
+   ```
+3. Restart the application
+4. Debug output will appear in the console showing:
+   - AI trigger mode and intervals
+   - Proofread window state changes
+   - Text queue operations
+   - Manual AI processing requests
+   - Auto-stop events
+
+**To disable debug mode:**
+
+Set `"debug_enabled": false` in the settings file or remove the setting entirely (debug is disabled by default).
+
+Debug output includes prefixes like `[GUI]`, `[TEXT-*]`, `[DEBUG]`, and `[INFO]` to identify the source of each message.
 
 ## Extending
 
