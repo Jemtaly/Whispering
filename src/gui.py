@@ -1476,11 +1476,19 @@ class App(tk.Tk):
         """Unlock UI controls after stopping."""
         # Unlock model settings
         self.model_combo.state(("!disabled",))
+
+        # Explicitly remove disabled state before setting readonly
+        self.device_combo.state(("!disabled",))
         self.device_combo.state(("readonly",))
+
+        self.autotype_mode.state(("!disabled",))
         self.autotype_mode.state(("readonly",))
 
         # Unlock translation language dropdowns
+        self.source_combo.state(("!disabled",))
         self.source_combo.state(("readonly",))
+
+        self.target_combo.state(("!disabled",))
         self.target_combo.state(("readonly",))
 
         # Unlock AI settings
