@@ -32,14 +32,14 @@ class App(tk.Tk):
 
         # Set minimum window size - will adjust based on mode
         # For minimal mode: calculate based on controls, for full mode add space for text
-        # Minimal mode: 400x980 minimum (never go below this)
-        # Full mode: 900x980 gives space for text panels
+        # Minimal mode: 400x1000 minimum (never go below this)
+        # Full mode: 900x1000 gives space for text panels
         if self.text_visible:
-            self.minsize(900, 980)  # Full mode - more vertical space for text
-            self.maxsize(10000, 980)  # Limit max height to 980px
+            self.minsize(900, 1000)  # Full mode - more vertical space for text
+            self.maxsize(10000, 1000)  # Limit max height to 1000px
         else:
-            self.minsize(400, 980)  # Minimal mode - never below 400x980
-            self.maxsize(10000, 980)  # Limit max height to 980px
+            self.minsize(400, 1000)  # Minimal mode - never below 400x1000
+            self.maxsize(10000, 1000)  # Limit max height to 1000px
 
         # Try to load AI configuration
         self.ai_config = None
@@ -735,9 +735,9 @@ class App(tk.Tk):
 
         # Set initial window geometry based on mode
         if self.text_visible:
-            self.geometry("900x980")  # Full mode
+            self.geometry("900x1000")  # Full mode
         else:
-            self.geometry("400x980")  # Minimal mode (default)
+            self.geometry("400x1000")  # Minimal mode (default)
 
         # Save settings on window close
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -1125,12 +1125,12 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)
             self.columnconfigure(1, weight=0)  # Text column won't expand
 
-            # Adjust minimum size for minimal mode (never below 400x980)
-            self.minsize(400, 980)
-            self.maxsize(10000, 980)  # Limit max height to 980px
+            # Adjust minimum size for minimal mode (never below 400x1000)
+            self.minsize(400, 1000)
+            self.maxsize(10000, 1000)  # Limit max height to 1000px
 
             # Resize window to minimal width
-            self.geometry("400x980")
+            self.geometry("400x1000")
         else:
             # FULL MODE: Show text frame
             self.text_frame.grid()
@@ -1142,11 +1142,11 @@ class App(tk.Tk):
             self.columnconfigure(1, weight=1)  # Text column expands
 
             # Restore minimum size for full mode
-            self.minsize(900, 980)
-            self.maxsize(10000, 980)  # Limit max height to 980px
+            self.minsize(900, 1000)
+            self.maxsize(10000, 1000)  # Limit max height to 1000px
 
-            # Resize window to show both columns (max height 980px)
-            self.geometry("900x980")
+            # Resize window to show both columns (max height 1000px)
+            self.geometry("900x1000")
 
         # Save state to settings
         self.settings.set("text_visible", self.text_visible)
@@ -1433,20 +1433,40 @@ class App(tk.Tk):
         self.device_combo.state(("disabled",))
         self.autotype_mode.state(("disabled",))
 
-        # Lock translation settings
+        # Lock AI settings
         if self.ai_available:
+            # Get current AI state
+            ai_enabled = "selected" in self.ai_check.state()
+
+            # Lock Enable AI checkbox
+            self.ai_check.state(("disabled",))
+
+            # Lock AI controls
             self.ai_translate_only_check.state(("disabled",))
+            self.ai_translate_check.state(("disabled",))
             self.ai_persona_combo.state(("disabled",))
             self.ai_model_combo.state(("disabled",))
+            self.ai_manual_mode_check.state(("disabled",))
 
-        # Lock non-selected TTS source checkboxes
+            # Lock trigger controls
+            self.ai_trigger_combo.state(("disabled",))
+            self.ai_interval_combo.state(("disabled",))
+
+        # Lock TTS controls
         if self.tts_available:
-            if self.tts_source_active != "whisper":
-                self.tts_source_whisper.state(("disabled",))
-            if self.tts_source_active != "ai":
-                self.tts_source_ai.state(("disabled",))
-            if self.tts_source_active != "translation":
-                self.tts_source_translation.state(("disabled",))
+            # Lock Enable TTS checkbox
+            self.tts_check.state(("disabled",))
+
+            # Lock all TTS source checkboxes
+            self.tts_source_whisper.state(("disabled",))
+            self.tts_source_ai.state(("disabled",))
+            self.tts_source_translation.state(("disabled",))
+
+            # Lock TTS output controls
+            self.tts_save_check.state(("disabled",))
+            self.tts_format_combo.state(("disabled",))
+            self.tts_browse_button.state(("disabled",))
+            self.tts_clear_button.state(("disabled",))
 
     def unlock_ui_controls(self):
         """Unlock UI controls after stopping."""
@@ -1455,11 +1475,16 @@ class App(tk.Tk):
         self.device_combo.state(("readonly",))
         self.autotype_mode.state(("readonly",))
 
-        # Unlock translation settings
+        # Unlock AI settings
         if self.ai_available:
+            # Unlock Enable AI checkbox
+            self.ai_check.state(("!disabled",))
+
             # Re-enable based on current state
             translate_only = "selected" in self.ai_translate_only_check.state()
             self.ai_translate_only_check.state(("!disabled",))
+            self.ai_translate_check.state(("!disabled",))
+            self.ai_manual_mode_check.state(("!disabled",))
 
             # Re-apply translate-only logic for task and translate output
             if translate_only:
@@ -1469,11 +1494,25 @@ class App(tk.Tk):
 
             self.ai_model_combo.state(("!disabled",))
 
-        # Unlock all TTS source checkboxes
+            # Unlock trigger controls
+            self.ai_trigger_combo.state(("!disabled",))
+            self.ai_interval_combo.state(("!disabled",))
+
+        # Unlock TTS controls
         if self.tts_available:
+            # Unlock Enable TTS checkbox
+            self.tts_check.state(("!disabled",))
+
+            # Unlock all TTS source checkboxes
             self.tts_source_whisper.state(("!disabled",))
             self.tts_source_ai.state(("!disabled",))
             self.tts_source_translation.state(("!disabled",))
+
+            # Unlock TTS output controls
+            self.tts_save_check.state(("!disabled",))
+            self.tts_format_combo.state(("!disabled",))
+            self.tts_browse_button.state(("!disabled",))
+            self.tts_clear_button.state(("!disabled",))
 
     def starting(self):
         if self.ready[0] is True:
