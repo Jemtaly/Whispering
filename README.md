@@ -15,15 +15,20 @@ cd Whispering
 
 - **Real-time transcription** with iterative refinement for accuracy
 - **AI-powered text processing** - intelligent proofreading and translation with OpenRouter integration
+  - Separate output windows for proofread and translation results
+  - Dual-call AI processing for proofread+translate mode (sequential processing)
+  - Smart paragraph formatting for improved readability
 - **Text-to-Speech (TTS)** - convert transcribed text back to audio with voice cloning support
 - **Transcript logging** - automatic session-based logging to timestamped files in `log_output/`
 - **Live translation** to 100+ languages via Google Translate or AI models
 - **Auto-type to any app** - dictate directly into browsers, editors, chat apps with cursor positioning
-- **Copy/Cut to clipboard** - easily transfer transcribed text to other applications
+- **Copy/Cut buttons** - quick text transfer with character/word counts displayed
 - **Editable transcript** - manually edit text and add paragraph breaks
-- **Two-column GUI layout** - organized controls with labeled output windows
-- **Minimal mode** - hide text displays for compact interface
-- **Settings persistence** - remember preferences including window layout
+- **Two-column GUI layout** - organized controls with three labeled output windows
+- **Minimal mode** - starts compact (400x950px), expandable to show all text windows
+- **Smart window management** - 950px max height, all windows always visible (grayed when disabled)
+- **Settings persistence** - remember preferences including window layout and visibility
+- **5-minute auto-stop** - automatically stops recording after 5 minutes of continuous use
 - **GPU acceleration** with CUDA support for fast inference
 - **VRAM estimates** - see memory requirements for each model
 - **Adaptive paragraph detection** based on speech pause patterns
@@ -32,7 +37,7 @@ cd Whispering
 - **Multiple model sizes** from tiny to large-v3
 - **Contextual help dialogs** - clickable "?" buttons with compact, easy-to-read help
 - **Organized project structure** - clean separation of source, config, scripts, and logs
-- **Graceful exit** - clean shutdown on Ctrl+C without error traces
+- **Graceful exit** - clean shutdown on Ctrl+C without error traces, processes all remaining text
 
 ## AI Features (Optional)
 
@@ -41,8 +46,15 @@ Whispering now includes powerful AI-powered text processing capabilities:
 - **Intelligent Proofreading** - Fix spelling, grammar, and punctuation errors in real-time
 - **Context-Aware Translation** - Better translations that understand speech patterns
 - **Multiple AI Models** - Choose from Claude, GPT-4, Gemini, Llama, and more via OpenRouter
-- **Smart Text Processing** - Configurable triggers (time-based or word count-based)
+- **Smart Text Processing** - Configurable triggers (5s-2min intervals or word count-based)
 - **Processing Modes** - Proofread only, translate only, or combined processing
+  - **Proofread mode** - Corrected text appears in Proofread Output window
+  - **Translate mode** - Translated text appears in Translation Output window
+  - **Proofread+Translate mode** - Sequential dual-call processing:
+    1. First call proofreads the text → Proofread Output window
+    2. Second call translates the proofread text → Translation Output window
+- **Input Validation** - Prevents selecting translation modes without target language
+- **Auto-stop Safety** - Automatically stops after 5 minutes to prevent runaway processing
 
 See [AI_SETUP.md](AI_SETUP.md) for complete setup instructions and configuration options.
 
@@ -142,11 +154,18 @@ python src/gui.py
 
 The GUI uses a two-column layout:
 - **Left column** - All controls organized into logical sections
-- **Right column** - Two labeled text windows (Whisper Output / Translated or Proofread Output)
+- **Right column** - Three labeled text windows with scrollbars:
+  - **Whisper Output** - Raw transcription as you speak
+  - **Proofread Output** - AI-corrected text (grayed out when not in use)
+  - **Translation Output** - Translated or AI-processed text
+
+**Application starts in minimal mode** (400x950px) with text windows hidden. Click "Show Text ▶" to expand.
 
 **Main Controls:**
 - **Mic** - Select input device (system default uses PipeWire/PulseAudio), with refresh button
-- **Hide Text ◀** - Toggle minimal mode (hides text windows, state is saved)
+- **Show/Hide Text** - Toggle between minimal (400px) and full (900px) width modes
+  - Minimal mode: Controls only, compact interface
+  - Full mode: Shows all three text windows with live output
 
 **Help Buttons:**
 - Click **?** next to section headers for context-sensitive help
@@ -173,8 +192,13 @@ The GUI uses a two-column layout:
 **AI Processing Section** (when AI is available):
 - **Enable AI** - Turn on AI-powered proofreading/translation
 - **Mode** - Proofread, Translate, or Proofread+Translate
+  - Validation prevents selecting translate modes without target language
 - **Model** - Select AI model (Claude, GPT-4, Gemini, etc.)
-- **Trigger** - Time-based (minutes) or word count-based processing
+- **Trigger** - Time-based (5s-2min) or word count-based processing
+  - Intervals: 5s, 10s, 15s, 20s, 25s, 30s, 45s, 1m, 1.5m, 2m
+- **Copy/Cut Buttons** - Quick text transfer with character/word counts
+  - Displayed for each active output window
+  - Shows blue-colored counts for easy visibility
 - **Prompt** - Optional initial prompt for transcription
 
 **Status & Controls:**
@@ -184,7 +208,14 @@ The GUI uses a two-column layout:
 
 **Text Windows** (can be hidden with "Hide Text ◀"):
 - **Whisper Output** - Raw transcription with editable text
-- **Translated/Proofread Output** - Processed output (translation or AI-enhanced text)
+- **Proofread Output** - AI-corrected text with paragraph formatting
+  - Grayed out when not using AI proofread modes
+  - Enabled with white background when AI proofread is active
+- **Translation Output** - Translated or AI-processed text
+  - Shows Google Translate output when AI is disabled
+  - Shows AI translation when AI translate mode is active
+
+All three windows are always visible but disabled (grayed) when not in use. This provides clear visual feedback about which processing modes are active.
 
 ### TUI
 
@@ -413,16 +444,24 @@ Both text windows (Whisper Output and Translated/Proofread Output) are fully edi
 
 **Copy/Cut to other applications:**
 
-Each text window has **Copy** and **Cut** buttons that allow you to transfer text to other applications:
+The control panel displays **Copy** and **Cut** buttons for active output windows, along with character and word counts in blue:
 - **Copy** - Copies the text to clipboard (text remains in window)
 - **Cut** - Copies the text to clipboard and clears the window
+- **Character/Word Counts** - Live counts update as text arrives (displayed in blue for visibility)
+
+**Button visibility:**
+- Buttons appear based on active modes
+- AI Proofread mode: Shows Proofread Copy/Cut buttons
+- AI Translate or Google Translate mode: Shows Translation Copy/Cut buttons
+- AI Proofread+Translate mode: Shows both sets of buttons
 
 **Workflow for typing in unfocused windows:**
 1. Start transcription and speak your text
-2. Click **Cut** to copy the text and clear the window
-3. Switch to your target application (browser, notepad, etc.)
-4. Paste with Ctrl+V (Cmd+V on macOS)
-5. Return to Whispering and continue speaking - new text will appear in the cleared window
+2. Watch the character/word count grow as you speak
+3. Click **Cut** to copy the text and clear the window
+4. Switch to your target application (browser, notepad, etc.)
+5. Paste with Ctrl+V (Cmd+V on macOS)
+6. Return to Whispering and continue speaking - new text will appear in the cleared window
 
 This approach lets you dictate to multiple applications without losing focus on what you're reading or working on.
 
