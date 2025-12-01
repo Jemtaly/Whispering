@@ -306,19 +306,39 @@ class App(tk.Tk):
         self.ts_count_label = ttk.Label(ts_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.ts_count_label.pack(side="right")
 
-        self.ts_text = Text(self.text_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
-        self.ts_text.grid(row=1, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        ts_frame = ttk.Frame(self.text_frame)
+        ts_frame.grid(row=1, column=0, sticky="nsew")
+        ts_frame.columnconfigure(0, weight=1)
+        ts_frame.rowconfigure(0, weight=1)
 
-        # Proofread output (middle) - header frame with label and count
+        self.ts_text = Text(ts_frame, on_new_text=self.on_new_transcription, on_text_changed=self.update_ts_count)
+        self.ts_text.grid(row=0, column=0, sticky="nsew")
+
+        ts_scrollbar = ttk.Scrollbar(ts_frame, command=self.ts_text.yview)
+        ts_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.ts_text.config(yscrollcommand=ts_scrollbar.set)
+
+        # AI processed output (middle) - header frame with label and count
         pr_header = ttk.Frame(self.text_frame)
         pr_header.grid(row=2, column=0, sticky="ew", padx=5, pady=(5, 2))
-        pr_label = ttk.Label(pr_header, text="Proofread Output", font=('TkDefaultFont', 9, 'bold'))
+        pr_label = ttk.Label(pr_header, text="AI Output", font=('TkDefaultFont', 9, 'bold'))
         pr_label.pack(side="left")
         self.pr_count_label = ttk.Label(pr_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.pr_count_label.pack(side="right")
 
-        self.pr_text = Text(self.text_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
-        self.pr_text.grid(row=3, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        pr_frame = ttk.Frame(self.text_frame)
+        pr_frame.grid(row=3, column=0, sticky="nsew")
+        pr_frame.columnconfigure(0, weight=1)
+        pr_frame.rowconfigure(0, weight=1)
+
+        self.pr_text = Text(pr_frame, on_new_text=self.on_new_proofread, on_text_changed=self.update_pr_count)
+        self.pr_text.grid(row=0, column=0, sticky="nsew")
+
+        pr_scrollbar = ttk.Scrollbar(pr_frame, command=self.pr_text.yview)
+        pr_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.pr_text.config(yscrollcommand=pr_scrollbar.set)
 
         # Disable proofread window by default (enable when AI proofread+translate is active)
         # Keep visible but grayed out
@@ -332,8 +352,18 @@ class App(tk.Tk):
         self.tl_count_label = ttk.Label(tl_header, text="0 chars, 0 words", font=('TkDefaultFont', 8), foreground="gray")
         self.tl_count_label.pack(side="right")
 
-        self.tl_text = Text(self.text_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
-        self.tl_text.grid(row=5, column=0, sticky="nsew")
+        # Create frame for text widget and scrollbar
+        tl_frame = ttk.Frame(self.text_frame)
+        tl_frame.grid(row=5, column=0, sticky="nsew")
+        tl_frame.columnconfigure(0, weight=1)
+        tl_frame.rowconfigure(0, weight=1)
+
+        self.tl_text = Text(tl_frame, on_new_text=self.on_new_translation, on_text_changed=self.update_tl_count)
+        self.tl_text.grid(row=0, column=0, sticky="nsew")
+
+        tl_scrollbar = ttk.Scrollbar(tl_frame, command=self.tl_text.yview)
+        tl_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tl_text.config(yscrollcommand=tl_scrollbar.set)
 
         # Store references to show/hide proofread window dynamically
         self.pr_header = pr_header
@@ -360,8 +390,7 @@ class App(tk.Tk):
             self.columnconfigure(0, weight=1, minsize=350)  # Controls column expands in minimal mode
             self.columnconfigure(1, weight=0)  # Text column hidden
 
-        self.rowconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)  # Main row for both frames
 
         # Row counter for controls_frame
         row = 0
@@ -530,18 +559,44 @@ class App(tk.Tk):
             self.ai_check.state(("disabled",))
         self.ai_check.pack(side="left", padx=(0, 5))
 
-        # AI Mode
-        ai_mode_frame = ttk.Frame(self.controls_frame)
-        ai_mode_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        # AI Persona/Task
+        ai_persona_frame = ttk.Frame(self.controls_frame)
+        ai_persona_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(ai_mode_frame, text="Mode:").pack(side="left", padx=(0, 2))
-        self.ai_mode_combo = ttk.Combobox(ai_mode_frame, values=["Proofread", "Translate", "Proofread+Translate"], state="readonly", width=18)
-        self.ai_mode_combo.current(0)
+        ttk.Label(ai_persona_frame, text="Task:").pack(side="left", padx=(0, 2))
+        if self.ai_available:
+            personas = self.ai_config.get_personas()
+            persona_names = [p['name'] for p in personas]
+            self.persona_ids = [p['id'] for p in personas]  # Store IDs for mapping
+        else:
+            persona_names = ["Proofread"]
+            self.persona_ids = ["proofread"]
+
+        self.ai_persona_combo = ttk.Combobox(ai_persona_frame, values=persona_names, state="readonly", width=18)
+        self.ai_persona_combo.current(0)
         if not self.ai_available:
-            self.ai_mode_combo.state(("disabled",))
-        self.ai_mode_combo.pack(side="left", fill="x", expand=True)
-        self.ai_mode_combo.bind("<<ComboboxSelected>>", self.on_ai_mode_changed)
+            self.ai_persona_combo.state(("disabled",))
+        self.ai_persona_combo.pack(side="left", fill="x", expand=True)
+
+        # AI Translate controls
+        ai_translate_frame = ttk.Frame(self.controls_frame)
+        ai_translate_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.ai_translate_check = ttk.Checkbutton(ai_translate_frame, text="Translate output", onvalue=True, offvalue=False, command=self.on_translate_mode_changed)
+        if self.ai_available:
+            self.ai_translate_check.state(("!alternate",))
+        else:
+            self.ai_translate_check.state(("disabled",))
+        self.ai_translate_check.pack(side="left", padx=(0, 10))
+
+        self.ai_translate_only_check = ttk.Checkbutton(ai_translate_frame, text="Translate Only (1:1)", onvalue=True, offvalue=False, command=self.on_translate_mode_changed)
+        if self.ai_available:
+            self.ai_translate_only_check.state(("!alternate",))
+        else:
+            self.ai_translate_only_check.state(("disabled",))
+        self.ai_translate_only_check.pack(side="left")
 
         # AI Model
         ai_model_frame = ttk.Frame(self.controls_frame)
@@ -568,52 +623,81 @@ class App(tk.Tk):
             self.ai_model_combo.state(("disabled",))
         self.ai_model_combo.pack(side="left", fill="x", expand=True)
 
-        # AI Trigger
+        # AI Trigger - Split into left (manual) and right (automatic)
         ai_trigger_frame = ttk.Frame(self.controls_frame)
         ai_trigger_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(ai_trigger_frame, text="Trigger:").pack(side="left", padx=(0, 2))
-        self.ai_trigger_combo = ttk.Combobox(ai_trigger_frame, values=["Time", "Words"], state="readonly", width=7)
+        # LEFT SIDE: Manual mode
+        manual_frame = ttk.Frame(ai_trigger_frame)
+        manual_frame.pack(side="left", fill="x", expand=False)
+
+        self.ai_manual_mode_check = ttk.Checkbutton(manual_frame, text="Manual mode", onvalue=True, offvalue=False, command=self.on_trigger_mode_changed)
+        if self.ai_available:
+            self.ai_manual_mode_check.state(("!alternate",))
+        else:
+            self.ai_manual_mode_check.state(("disabled",))
+        self.ai_manual_mode_check.pack(side="top", anchor="w")
+
+        self.ai_manual_button = ttk.Button(manual_frame, text="⚡ Process Now", width=12, command=self.manual_ai_trigger)
+        if not self.ai_available:
+            self.ai_manual_button.state(("disabled",))
+        else:
+            self.ai_manual_button.state(("disabled",))  # Disabled by default (enable when manual mode is checked)
+        self.ai_manual_button.pack(side="top", anchor="w", pady=(2, 0))
+
+        # RIGHT SIDE: Automatic triggers
+        auto_frame = ttk.Frame(ai_trigger_frame)
+        auto_frame.pack(side="right", fill="x", expand=True)
+
+        trigger_row = ttk.Frame(auto_frame)
+        trigger_row.pack(side="top", fill="x", anchor="e")
+        ttk.Label(trigger_row, text="Trigger:").pack(side="left", padx=(0, 2))
+        self.ai_trigger_combo = ttk.Combobox(trigger_row, values=["Time", "Words"], state="readonly", width=7)
         self.ai_trigger_combo.current(0)
         self.ai_trigger_combo.bind("<<ComboboxSelected>>", self.on_trigger_changed)
         if not self.ai_available:
             self.ai_trigger_combo.state(("disabled",))
         self.ai_trigger_combo.pack(side="left")
 
-        # AI Interval/Words (same row, toggled)
-        self.ai_interval_label = ttk.Label(ai_trigger_frame, text=" sec:")
-        self.ai_interval_label.pack(side="left", padx=(5, 2))
+        interval_row = ttk.Frame(auto_frame)
+        interval_row.pack(side="top", fill="x", pady=(2, 0), anchor="e")
+        self.ai_interval_label = ttk.Label(interval_row, text="Interval:")
+        self.ai_interval_label.pack(side="left", padx=(0, 2))
         # Intervals: 5, 10, 15, 20, 25, 30, 45 seconds, 60 (1min), 90 (1.5min), 120 (2min)
         interval_values = ["5", "10", "15", "20", "25", "30", "45", "60", "90", "120"]
         interval_labels = ["5s", "10s", "15s", "20s", "25s", "30s", "45s", "1m", "1.5m", "2m"]
-        self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_labels, state="readonly", width=6)
+        self.ai_interval_combo = ttk.Combobox(interval_row, values=interval_labels, state="readonly", width=6)
         self.ai_interval_combo.current(3)  # Default to 20 seconds
         self.ai_interval_values_map = dict(zip(interval_labels, interval_values))  # Map display to actual values
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
         self.ai_interval_combo.pack(side="left")
 
-        self.ai_words_label = ttk.Label(ai_trigger_frame, text=" words:")
-        self.ai_words_spin = ttk.Spinbox(ai_trigger_frame, from_=50, to=500, increment=50, state="readonly", width=5)
+        self.ai_words_label = ttk.Label(interval_row, text=" words:")
+        self.ai_words_spin = ttk.Spinbox(interval_row, from_=50, to=500, increment=50, state="readonly", width=5)
         self.ai_words_spin.set(150)
         if not self.ai_available:
             self.ai_words_spin.state(("disabled",))
+        self.ai_words_spin.pack(side="left")
 
-        # AI Proofread output Copy/Cut buttons with count
-        ai_proofread_buttons_frame = ttk.Frame(self.controls_frame)
-        ai_proofread_buttons_frame.grid(row=row, column=0, sticky="ew", pady=(5, 5))
+        # Store references for enable/disable
+        self.auto_trigger_widgets = [self.ai_trigger_combo, self.ai_interval_combo, self.ai_words_spin, self.ai_interval_label, self.ai_words_label]
+
+        # AI output Copy/Cut buttons with count
+        ai_output_buttons_frame = ttk.Frame(self.controls_frame)
+        ai_output_buttons_frame.grid(row=row, column=0, sticky="ew", pady=(5, 5))
         row += 1
 
-        ttk.Button(ai_proofread_buttons_frame, text="Copy Proofread", command=self.copy_proofread_text, width=15).pack(side="left", padx=(0, 5))
-        ttk.Button(ai_proofread_buttons_frame, text="Cut Proofread", command=self.cut_proofread_text, width=15).pack(side="left", padx=(0, 5))
-        self.proofread_count_button = ttk.Label(ai_proofread_buttons_frame, text="0c, 0w", foreground="blue", font=('TkDefaultFont', 8))
+        ttk.Button(ai_output_buttons_frame, text="Copy AI Output", command=self.copy_proofread_text, width=15).pack(side="left", padx=(0, 5))
+        ttk.Button(ai_output_buttons_frame, text="Cut AI Output", command=self.cut_proofread_text, width=15).pack(side="left", padx=(0, 5))
+        self.proofread_count_button = ttk.Label(ai_output_buttons_frame, text="0c, 0w", foreground="blue", font=('TkDefaultFont', 8))
         self.proofread_count_button.pack(side="left")
 
         # Store ref to show/hide when needed
-        self.ai_proofread_buttons_frame = ai_proofread_buttons_frame
-        # Hide by default (only show when AI proofread or proofread+translate is active)
-        ai_proofread_buttons_frame.grid_remove()
+        self.ai_output_buttons_frame = ai_output_buttons_frame
+        # Hide by default (only show when AI is active)
+        ai_output_buttons_frame.grid_remove()
 
         # === PROMPT ===
         prompt_frame = ttk.Frame(self.controls_frame)
@@ -705,6 +789,19 @@ class App(tk.Tk):
         self.level_bar = ttk.Progressbar(level_frame, length=100, mode='determinate', maximum=100)
         self.level_bar.pack(side="left", fill="x", expand=True)
 
+        # Auto-stop controls
+        autostop_frame = ttk.Frame(control_frame)
+        autostop_frame.pack(side="top", fill="x", pady=(5, 0))
+
+        self.autostop_check = ttk.Checkbutton(autostop_frame, text="Auto-stop after", onvalue=True, offvalue=False)
+        self.autostop_check.pack(side="left", padx=(0, 2))
+
+        self.autostop_spin = ttk.Spinbox(autostop_frame, from_=1, to=60, increment=1, state="normal", width=4)
+        self.autostop_spin.set(5)  # Default 5 minutes
+        self.autostop_spin.pack(side="left", padx=(0, 2))
+
+        ttk.Label(autostop_frame, text="min of inactivity").pack(side="left")
+
         # === STATUS ===
         self.status_label = ttk.Label(self.controls_frame, text="", foreground="red", wraplength=330)
         self.status_label.grid(row=row, column=0, sticky="ew")
@@ -715,6 +812,7 @@ class App(tk.Tk):
         self.error = [None]
         self.level = [0]
         self.autotype_error_shown = False
+        self.manual_trigger_requested = [False]  # Flag for manual AI processing
 
         # TTS session tracking
         self.tts_session_text = ""  # Accumulate text for TTS
@@ -741,6 +839,79 @@ class App(tk.Tk):
             ai_enabled = self.settings.get("ai_enabled", False)
             if ai_enabled:
                 self.ai_check.state(("selected",))
+
+            # Load AI persona/task
+            ai_persona_index = self.settings.get("ai_persona_index", 0)
+            try:
+                if 0 <= ai_persona_index < len(self.ai_persona_combo.cget("values")):
+                    self.ai_persona_combo.current(ai_persona_index)
+            except:
+                pass
+
+            # Load AI translate checkbox
+            ai_translate = self.settings.get("ai_translate", False)
+            if ai_translate:
+                self.ai_translate_check.state(("selected",))
+
+            # Load AI translate-only checkbox
+            ai_translate_only = self.settings.get("ai_translate_only", False)
+            if ai_translate_only:
+                self.ai_translate_only_check.state(("selected",))
+                # Trigger the mode changed handler to disable task controls
+                self.on_translate_mode_changed()
+
+            # Load AI manual mode checkbox
+            ai_manual_mode = self.settings.get("ai_manual_mode", False)
+            if ai_manual_mode:
+                self.ai_manual_mode_check.state(("selected",))
+                # Trigger the mode changed handler to enable/disable controls
+                self.on_trigger_mode_changed()
+
+            # Load AI model selection
+            ai_model_index = self.settings.get("ai_model_index", 0)
+            try:
+                if 0 <= ai_model_index < len(self.ai_model_combo.cget("values")):
+                    self.ai_model_combo.current(ai_model_index)
+            except:
+                pass
+
+            # Load AI trigger mode
+            ai_trigger_mode = self.settings.get("ai_trigger_mode", "time")
+            try:
+                trigger_values = self.ai_trigger_combo.cget("values")
+                trigger_display = ai_trigger_mode.capitalize()
+                if trigger_display in trigger_values:
+                    self.ai_trigger_combo.set(trigger_display)
+            except:
+                pass
+
+            # Load AI interval (convert seconds to label)
+            ai_process_interval = self.settings.get("ai_process_interval", 20)
+            try:
+                # Find the label that matches this interval value
+                for label, value in self.ai_interval_values_map.items():
+                    if int(value) == ai_process_interval:
+                        self.ai_interval_combo.set(label)
+                        break
+            except:
+                pass
+
+            # Load AI words
+            ai_process_words = self.settings.get("ai_process_words", 150)
+            try:
+                self.ai_words_spin.set(ai_process_words)
+            except:
+                pass
+
+        # Load auto-stop settings
+        auto_stop_enabled = self.settings.get("auto_stop_enabled", False)
+        auto_stop_minutes = self.settings.get("auto_stop_minutes", 5)
+        if auto_stop_enabled:
+            self.autostop_check.state(("selected",))
+        try:
+            self.autostop_spin.set(auto_stop_minutes)
+        except:
+            pass
 
         # Set initial window geometry based on mode
         if self.text_visible:
@@ -928,19 +1099,55 @@ class App(tk.Tk):
             self.status_label.config(text=f"Clipboard error: {e}", foreground="red")
             return False
 
-    def on_ai_mode_changed(self, event=None):
-        """Validate AI mode selection - Proofread+Translate and Translate require target language."""
-        mode = self.ai_mode_combo.get()
-        if mode in ("Proofread+Translate", "Translate"):
-            target = self.target_combo.get()
-            if target == "none":
-                self.status_label.config(
-                    text=f"⚠ {mode} mode requires a Target language. Please select one.",
-                    foreground="orange"
-                )
-                # Revert to Proofread mode
-                self.ai_mode_combo.current(0)
-                return
+    def on_trigger_mode_changed(self):
+        """Handle Manual mode checkbox - enable/disable manual vs automatic triggers."""
+        if not self.ai_available:
+            return
+
+        manual_mode = "selected" in self.ai_manual_mode_check.state()
+
+        if manual_mode:
+            # Manual mode: enable Process Now button, disable automatic triggers
+            self.ai_manual_button.state(("!disabled",))
+            for widget in self.auto_trigger_widgets:
+                try:
+                    widget.state(("disabled",))
+                except:
+                    widget.config(state="disabled")  # For Label widgets
+        else:
+            # Automatic mode: disable Process Now button, enable automatic triggers
+            self.ai_manual_button.state(("disabled",))
+            for widget in self.auto_trigger_widgets:
+                try:
+                    widget.state(("!disabled",))
+                except:
+                    widget.config(state="normal")  # For Label widgets
+
+    def on_translate_mode_changed(self):
+        """Handle Translate Only checkbox - disable/enable task controls."""
+        if not self.ai_available:
+            return
+
+        translate_only = "selected" in self.ai_translate_only_check.state()
+
+        if translate_only:
+            # Translate Only mode: disable task and translate output checkbox
+            self.ai_persona_combo.state(("disabled",))
+            self.ai_translate_check.state(("disabled",))
+        else:
+            # Normal mode: enable task and translate output checkbox
+            self.ai_persona_combo.state(("!disabled",))
+            self.ai_translate_check.state(("!disabled",))
+
+    def manual_ai_trigger(self):
+        """Manual trigger for AI processing - process accumulated text immediately."""
+        if not self.ready[0]:
+            # Not running, can't trigger
+            return
+
+        # Set flag to request manual processing
+        self.manual_trigger_requested[0] = True
+        print("[GUI] Manual AI processing requested", flush=True)
 
     def finalize_tts_session(self):
         """Generate TTS audio from accumulated session text."""
@@ -972,18 +1179,8 @@ class App(tk.Tk):
         self.vram_label.config(text=vram_info)
 
     def on_target_changed(self, event=None):
-        """Update AI mode options based on target language selection."""
-        target = self.target_combo.get()
-
-        if target == "none":
-            # No translation - only show Proofread option
-            self.ai_mode_combo.config(values=["Proofread"])
-            self.ai_mode_combo.current(0)
-        else:
-            # Translation enabled - show all options
-            self.ai_mode_combo.config(values=["Proofread", "Translate", "Proofread+Translate"])
-            # Default to Proofread+Translate when translation is enabled
-            self.ai_mode_combo.current(2)
+        """Handle target language changes - can add validation here if needed."""
+        pass  # No longer needed with new UI design
 
     def on_trigger_changed(self, event=None):
         """Update visible controls based on trigger mode selection."""
@@ -1122,8 +1319,50 @@ class App(tk.Tk):
             try:
                 ai_enabled = "selected" in self.ai_check.state()
                 self.settings.set("ai_enabled", ai_enabled)
+
+                # Save AI translate checkbox
+                ai_translate = "selected" in self.ai_translate_check.state()
+                self.settings.set("ai_translate", ai_translate)
+
+                # Save AI translate-only checkbox
+                ai_translate_only = "selected" in self.ai_translate_only_check.state()
+                self.settings.set("ai_translate_only", ai_translate_only)
+
+                # Save AI manual mode checkbox
+                ai_manual_mode = "selected" in self.ai_manual_mode_check.state()
+                self.settings.set("ai_manual_mode", ai_manual_mode)
+
+                # Save AI persona selection
+                persona_idx = self.ai_persona_combo.current()
+                self.settings.set("ai_persona_index", persona_idx)
+
+                # Save AI model selection
+                ai_model_index = self.ai_model_combo.current()
+                self.settings.set("ai_model_index", ai_model_index)
+
+                # Save AI trigger mode and interval/words
+                ai_trigger_mode = self.ai_trigger_combo.get().lower()
+                self.settings.set("ai_trigger_mode", ai_trigger_mode)
+
+                # Save interval value (convert from label to seconds)
+                interval_label = self.ai_interval_combo.get()
+                ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))
+                self.settings.set("ai_process_interval", ai_process_interval)
+
+                # Save words value
+                ai_process_words = int(self.ai_words_spin.get())
+                self.settings.set("ai_process_words", ai_process_words)
             except Exception as e:
                 print(f"Error saving AI settings: {e}")
+
+        # Save auto-stop settings
+        try:
+            auto_stop_enabled = "selected" in self.autostop_check.state()
+            auto_stop_minutes = int(self.autostop_spin.get())
+            self.settings.set("auto_stop_enabled", auto_stop_enabled)
+            self.settings.set("auto_stop_minutes", auto_stop_minutes)
+        except Exception as e:
+            print(f"Error saving auto-stop settings: {e}")
 
         # Persist to disk
         self.settings.save()
@@ -1195,19 +1434,36 @@ class App(tk.Tk):
                 models = self.ai_config.get_models()
                 selected_model_id = models[model_idx]['id']
 
-                # Determine mode based on selection and target language
-                mode_text = self.ai_mode_combo.get()
-                if target is None:
-                    # No target language - force proofread mode
-                    mode = "proofread"
+                # Get persona and translate settings
+                translate_only = self.ai_translate_only_check.instate(("selected",))
+
+                # Determine mode based on translate-only or task mode
+                if translate_only:
+                    # Translate Only mode: direct 1:1 AI translation (no processing)
+                    mode = "translate"
+                    persona_name = "Translate Only"
                 else:
-                    # Map UI text to mode
-                    mode_map = {
-                        "Proofread": "proofread",
-                        "Translate": "translate",
-                        "Proofread+Translate": "proofread_translate"
-                    }
-                    mode = mode_map.get(mode_text, "proofread")
+                    # Task mode: get persona and translate settings
+                    persona_idx = self.ai_persona_combo.current()
+                    persona_id = self.persona_ids[persona_idx]
+                    translate_enabled = self.ai_translate_check.instate(("selected",))
+
+                    # Map persona + translate to mode
+                    if persona_id == "proofread":
+                        # Built-in proofread persona
+                        if translate_enabled and target is not None:
+                            mode = "proofread_translate"
+                        else:
+                            mode = "proofread"
+                    else:
+                        # Custom persona - for now, treat as proofread
+                        # TODO: Add custom persona support to ai_provider.py
+                        if translate_enabled and target is not None:
+                            mode = "proofread_translate"
+                        else:
+                            mode = "proofread"
+
+                    persona_name = self.ai_persona_combo.get()
 
                 # Create AI processor
                 ai_processor = AITextProcessor(
@@ -1218,23 +1474,40 @@ class App(tk.Tk):
                     target_lang=target
                 )
 
-                mode_display = mode.replace('_', '+').title()
-                self.status_label.config(text=f"AI: {models[model_idx]['name']} ({mode_display})", foreground="green")
+                # Display status
+                if translate_only:
+                    self.status_label.config(text=f"AI: {models[model_idx]['name']} (Translate Only)", foreground="green")
+                else:
+                    translate_status = " + Translate" if translate_enabled and target else ""
+                    self.status_label.config(text=f"AI: {models[model_idx]['name']} ({persona_name}{translate_status})", foreground="green")
             except Exception as e:
                 self.status_label.config(text=f"AI Error: {str(e)[:50]}", foreground="red")
                 print(f"Failed to initialize AI processor: {e}")
                 ai_processor = None
 
         # Get AI processing parameters
-        if self.ai_available:
-            interval_label = self.ai_interval_combo.get()
-            ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))  # seconds
-        else:
-            ai_process_interval = 20  # Default 20 seconds
-        ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
-        ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
+        manual_mode = "selected" in self.ai_manual_mode_check.state() if self.ai_available else False
 
-        # Check if we need to enable proofread window (for AI proofread+translate mode)
+        if manual_mode:
+            # Manual mode: set trigger to "manual" to skip automatic processing
+            ai_trigger_mode = "manual"
+            ai_process_interval = 999999  # Large value (won't be used)
+            ai_process_words = None
+        else:
+            # Automatic mode: use configured trigger settings
+            if self.ai_available:
+                interval_label = self.ai_interval_combo.get()
+                ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))  # seconds
+            else:
+                ai_process_interval = 20  # Default 20 seconds
+            ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
+            ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
+
+        # Get auto-stop parameters from GUI
+        auto_stop_enabled = "selected" in self.autostop_check.state()
+        auto_stop_minutes = int(self.autostop_spin.get())
+
+        # Check if we need to enable proofread window (for AI proofread+translate or proofread-only modes)
         prres_queue = None
         if ai_processor and ai_processor.mode == "proofread_translate":
             prres_queue = self.pr_text.res_queue
@@ -1243,19 +1516,21 @@ class App(tk.Tk):
             print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
             print(f"[GUI] self.pr_text.res_queue ID: {id(self.pr_text.res_queue)}", flush=True)
             self.pr_text.config(state="normal", background="white")
-            self.ai_proofread_buttons_frame.grid()
+            self.ai_output_buttons_frame.grid()
         elif ai_processor and ai_processor.mode == "proofread":
             # Enable proofread window for proofread-only mode, show buttons
+            prres_queue = self.pr_text.res_queue  # FIX: Set queue for proofread-only mode
             print(f"[GUI] Enabling proofread window (mode: {ai_processor.mode})", flush=True)
+            print(f"[GUI] prres_queue ID: {id(prres_queue)}", flush=True)
             self.pr_text.config(state="normal", background="white")
-            self.ai_proofread_buttons_frame.grid()
+            self.ai_output_buttons_frame.grid()
         else:
             # Disable proofread window and hide buttons (keep visible but grayed)
             print(f"[GUI] Disabling proofread window (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
             self.pr_text.config(state="disabled", background="#f0f0f0")
-            self.ai_proofread_buttons_frame.grid_remove()
+            self.ai_output_buttons_frame.grid_remove()
 
-        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue}, daemon=True).start()
+        threading.Thread(target=core.proc, args=(index, model, vad, memory, patience, timeout, prompt, source, target, self.ts_text.res_queue, self.tl_text.res_queue, self.ready, device, self.error, self.level, para_detect), kwargs={'ai_processor': ai_processor, 'ai_process_interval': ai_process_interval, 'ai_process_words': ai_process_words, 'ai_trigger_mode': ai_trigger_mode, 'prres_queue': prres_queue, 'auto_stop_enabled': auto_stop_enabled, 'auto_stop_minutes': auto_stop_minutes, 'manual_trigger': self.manual_trigger_requested}, daemon=True).start()
         self.starting()
         self.update_level()
 

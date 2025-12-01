@@ -407,7 +407,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None, auto_stop_enabled=False, auto_stop_minutes=5, manual_trigger=None):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -470,7 +470,7 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
         PROCESS_INTERVAL_SECONDS = ai_process_interval if ai_trigger_mode == "time" else float('inf')  # Already in seconds
         PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
         SILENCE_TIMEOUT = silence_timeout  # Flush after this many seconds of silence
-        AUTO_STOP_DURATION = 300  # Auto-stop after 5 minutes (300 seconds) of running
+        AUTO_STOP_DURATION = auto_stop_minutes * 60 if auto_stop_enabled else float('inf')  # Convert minutes to seconds
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
@@ -478,9 +478,9 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
             # Track last curr_src for exit processing
             last_curr_src = curr_src
 
-            # Check for auto-stop (5 minutes)
-            if time.time() - start_time >= AUTO_STOP_DURATION:
-                print("[INFO] Auto-stopping after 5 minutes", flush=True)
+            # Check for auto-stop (only if enabled AND no activity for specified duration)
+            if auto_stop_enabled and (time.time() - last_activity_time >= AUTO_STOP_DURATION):
+                print(f"[INFO] Auto-stopping after {auto_stop_minutes} minutes of inactivity", flush=True)
                 ready[0] = False  # Signal stop
                 break
 
@@ -497,31 +497,47 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 has_min_chars = len(accumulated_done) >= MIN_CHARS_TO_PROCESS
                 has_max_chars = len(accumulated_done) >= MAX_CHARS_TO_ACCUMULATE
 
-                # Time-based trigger (only active when trigger_mode == "time")
-                time_elapsed = time.time() - last_process_time
-                time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
+                # Manual trigger - process immediately when requested
+                manual_trigger_requested = manual_trigger and manual_trigger[0]
+                if manual_trigger_requested and accumulated_done:
+                    print("[DEBUG] Manual AI trigger detected, processing immediately", flush=True)
+                    manual_trigger[0] = False  # Reset flag
 
-                # Word count trigger (only active when trigger_mode == "words")
-                word_count = len(accumulated_done.split()) if accumulated_done else 0
-                word_threshold_reached = word_count >= PROCESS_WORD_COUNT
+                # Determine automatic triggers based on mode
+                if ai_trigger_mode == "manual":
+                    # Manual mode: only process on manual trigger, skip all automatic triggers
+                    time_threshold_reached = False
+                    word_threshold_reached = False
+                    silence_threshold_reached = False
+                else:
+                    # Automatic mode: enable configured triggers
+                    # Time-based trigger (only active when trigger_mode == "time")
+                    time_elapsed = time.time() - last_process_time
+                    time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
 
-                # Silence timeout trigger - flush if no activity for SILENCE_TIMEOUT seconds
-                silence_elapsed = time.time() - last_activity_time
-                silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
+                    # Word count trigger (only active when trigger_mode == "words")
+                    word_count = len(accumulated_done.split()) if accumulated_done else 0
+                    word_threshold_reached = word_count >= PROCESS_WORD_COUNT
+
+                    # Silence timeout trigger - flush if no activity for SILENCE_TIMEOUT seconds
+                    silence_elapsed = time.time() - last_activity_time
+                    silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
 
                 # Process if ANY of these conditions are met:
-                # 1. Normal case: 150+ chars AND paragraph break
-                # 2. Fallback case 1: 400+ chars (even without paragraph break)
+                # 1. Normal case: 150+ chars AND paragraph break (automatic only)
+                # 2. Fallback case 1: 400+ chars (even without paragraph break) (automatic only)
                 # 3. Fallback case 2: Time threshold reached (when in time mode)
                 # 4. Fallback case 3: Word count threshold reached (when in words mode)
                 # 5. Fallback case 4: Silence timeout reached (no speech for X seconds)
+                # 6. Fallback case 5: Manual trigger requested
                 should_process = (
                     accumulated_done and
                     ((has_min_chars and has_paragraph_break) or
                      has_max_chars or
                      time_threshold_reached or
                      word_threshold_reached or
-                     silence_threshold_reached)
+                     silence_threshold_reached or
+                     manual_trigger_requested)
                 )
 
                 if should_process:
@@ -619,9 +635,13 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                             separator = '\n\n' if has_paragraph_break else ' '
                             last_process_time = time.time()  # Reset timer after processing
 
-                            # Send the NEW processed chunk - ONLY send when we have processed text
-                            print(f"[DEBUG] Sending single AI result to TL_QUEUE", flush=True)
-                            tlres_queue.put((processed + separator, ""))
+                            # Send the NEW processed chunk to the correct queue based on mode
+                            if ai_processor.mode == "proofread" and prres_queue is not None:
+                                print(f"[DEBUG] Sending proofread result to PR_QUEUE", flush=True)
+                                prres_queue.put((processed + separator, ""))
+                            else:
+                                print(f"[DEBUG] Sending result to TL_QUEUE", flush=True)
+                                tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:

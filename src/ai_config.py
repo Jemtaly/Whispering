@@ -24,6 +24,10 @@ class AIConfig:
         self.config_path = Path(config_path)
         self.config = self._load_config()
 
+        # Load custom personas if available
+        self.custom_personas_path = Path(__file__).parent.parent / "config" / "custom_personas.yaml"
+        self.custom_personas = self._load_custom_personas()
+
     def _load_config(self) -> dict:
         """Load configuration from YAML file."""
         if not self.config_path.exists():
@@ -34,6 +38,19 @@ class AIConfig:
 
         with open(self.config_path, 'r') as f:
             return yaml.safe_load(f)
+
+    def _load_custom_personas(self) -> dict:
+        """Load custom personas from custom_personas.yaml if it exists."""
+        if not self.custom_personas_path.exists():
+            return {}
+
+        try:
+            with open(self.custom_personas_path, 'r') as f:
+                data = yaml.safe_load(f)
+                return data.get('personas', {}) if data else {}
+        except Exception as e:
+            print(f"Warning: Could not load custom personas: {e}")
+            return {}
 
     def get_api_key(self) -> Optional[str]:
         """Get OpenRouter API key from environment variable."""
@@ -86,6 +103,54 @@ class AIConfig:
     def get_defaults(self) -> Dict:
         """Get default settings."""
         return self.config['defaults']
+
+    def get_personas(self) -> List[Dict]:
+        """
+        Get list of all available personas (built-in + custom).
+
+        Returns:
+            List of persona dictionaries with id, name, description
+        """
+        personas = []
+
+        # Add built-in personas
+        personas.append({
+            'id': 'proofread',
+            'name': 'Proofread',
+            'description': 'Fix spelling and grammar errors only',
+            'builtin': True
+        })
+
+        # Add custom personas
+        for persona_id, persona_data in self.custom_personas.items():
+            personas.append({
+                'id': persona_id,
+                'name': persona_data.get('name', persona_id),
+                'description': persona_data.get('description', ''),
+                'builtin': False
+            })
+
+        return personas
+
+    def get_persona_prompt(self, persona_id: str) -> Optional[str]:
+        """
+        Get system prompt for a specific persona.
+
+        Args:
+            persona_id: ID of the persona ('proofread' or custom persona ID)
+
+        Returns:
+            System prompt string or None if not found
+        """
+        # Check built-in personas
+        if persona_id in self.config['prompts']:
+            return self.config['prompts'][persona_id]['system']
+
+        # Check custom personas
+        if persona_id in self.custom_personas:
+            return self.custom_personas[persona_id].get('system_prompt')
+
+        return None
 
     def format_prompt(self, mode: str, source_lang: str = None, target_lang: str = None) -> str:
         """
