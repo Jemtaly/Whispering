@@ -1536,6 +1536,17 @@ class App(tk.Tk):
         self.after(100, self.starting)
 
     def stop(self):
+        # Check if already stopped (auto-stop case)
+        if self.ready[0] is None:
+            # Already stopped - just update UI immediately
+            self.autotype_mode_active = "Off"
+            self.control_button.config(text="Start", command=self.start, state="normal")
+            self.level_bar['value'] = 0
+            self.unlock_ui_controls()
+            self.finalize_tts_session()
+            return
+
+        # Normal stop - signal core thread to stop
         self.autotype_mode_active = "Off"  # Disable autotype when stopping
         self.ready[0] = False
         self.control_button.config(text="Stopping...", command=None, state="disabled")
@@ -1557,6 +1568,14 @@ class App(tk.Tk):
     def update_level(self):
         if self.ready[0] is None:
             self.level_bar['value'] = 0
+            # Check if we need to trigger stopping cleanup (auto-stop case)
+            # If button shows "Stop", it means auto-stop happened and we need to update UI
+            if self.control_button['text'] == "Stop":
+                # Auto-stop detected - trigger stopping cleanup
+                self.autotype_mode_active = "Off"  # Disable autotype
+                self.control_button.config(text="Start", command=self.start, state="normal")
+                self.unlock_ui_controls()
+                self.finalize_tts_session()
             return
         # Update level bar with current audio level
         self.level_bar['value'] = min(100, self.level[0])
