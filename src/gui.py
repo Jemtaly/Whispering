@@ -623,47 +623,66 @@ class App(tk.Tk):
             self.ai_model_combo.state(("disabled",))
         self.ai_model_combo.pack(side="left", fill="x", expand=True)
 
-        # AI Trigger
+        # AI Trigger - Split into left (manual) and right (automatic)
         ai_trigger_frame = ttk.Frame(self.controls_frame)
         ai_trigger_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        ttk.Label(ai_trigger_frame, text="Trigger:").pack(side="left", padx=(0, 2))
-        self.ai_trigger_combo = ttk.Combobox(ai_trigger_frame, values=["Time", "Words"], state="readonly", width=7)
+        # LEFT SIDE: Manual mode
+        manual_frame = ttk.Frame(ai_trigger_frame)
+        manual_frame.pack(side="left", fill="x", expand=False)
+
+        self.ai_manual_mode_check = ttk.Checkbutton(manual_frame, text="Manual mode", onvalue=True, offvalue=False, command=self.on_trigger_mode_changed)
+        if self.ai_available:
+            self.ai_manual_mode_check.state(("!alternate",))
+        else:
+            self.ai_manual_mode_check.state(("disabled",))
+        self.ai_manual_mode_check.pack(side="top", anchor="w")
+
+        self.ai_manual_button = ttk.Button(manual_frame, text="⚡ Process Now", width=12, command=self.manual_ai_trigger)
+        if not self.ai_available:
+            self.ai_manual_button.state(("disabled",))
+        else:
+            self.ai_manual_button.state(("disabled",))  # Disabled by default (enable when manual mode is checked)
+        self.ai_manual_button.pack(side="top", anchor="w", pady=(2, 0))
+
+        # RIGHT SIDE: Automatic triggers
+        auto_frame = ttk.Frame(ai_trigger_frame)
+        auto_frame.pack(side="right", fill="x", expand=True)
+
+        trigger_row = ttk.Frame(auto_frame)
+        trigger_row.pack(side="top", fill="x", anchor="e")
+        ttk.Label(trigger_row, text="Trigger:").pack(side="left", padx=(0, 2))
+        self.ai_trigger_combo = ttk.Combobox(trigger_row, values=["Time", "Words"], state="readonly", width=7)
         self.ai_trigger_combo.current(0)
         self.ai_trigger_combo.bind("<<ComboboxSelected>>", self.on_trigger_changed)
         if not self.ai_available:
             self.ai_trigger_combo.state(("disabled",))
         self.ai_trigger_combo.pack(side="left")
 
-        # Manual trigger button
-        self.ai_manual_button = ttk.Button(ai_trigger_frame, text="⚡ Process Now", width=12, command=self.manual_ai_trigger)
-        if not self.ai_available:
-            self.ai_manual_button.state(("disabled",))
-        self.ai_manual_button.pack(side="right")
-
-        # AI Interval/Words (new row for better layout)
-        ai_interval_frame = ttk.Frame(self.controls_frame)
-        ai_interval_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
-        row += 1
-
-        self.ai_interval_label = ttk.Label(ai_interval_frame, text="Interval:")
+        interval_row = ttk.Frame(auto_frame)
+        interval_row.pack(side="top", fill="x", pady=(2, 0), anchor="e")
+        self.ai_interval_label = ttk.Label(interval_row, text="Interval:")
         self.ai_interval_label.pack(side="left", padx=(0, 2))
         # Intervals: 5, 10, 15, 20, 25, 30, 45 seconds, 60 (1min), 90 (1.5min), 120 (2min)
         interval_values = ["5", "10", "15", "20", "25", "30", "45", "60", "90", "120"]
         interval_labels = ["5s", "10s", "15s", "20s", "25s", "30s", "45s", "1m", "1.5m", "2m"]
-        self.ai_interval_combo = ttk.Combobox(ai_interval_frame, values=interval_labels, state="readonly", width=6)
+        self.ai_interval_combo = ttk.Combobox(interval_row, values=interval_labels, state="readonly", width=6)
         self.ai_interval_combo.current(3)  # Default to 20 seconds
         self.ai_interval_values_map = dict(zip(interval_labels, interval_values))  # Map display to actual values
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
         self.ai_interval_combo.pack(side="left")
 
-        self.ai_words_label = ttk.Label(ai_interval_frame, text=" words:")
-        self.ai_words_spin = ttk.Spinbox(ai_interval_frame, from_=50, to=500, increment=50, state="readonly", width=5)
+        self.ai_words_label = ttk.Label(interval_row, text=" words:")
+        self.ai_words_spin = ttk.Spinbox(interval_row, from_=50, to=500, increment=50, state="readonly", width=5)
         self.ai_words_spin.set(150)
         if not self.ai_available:
             self.ai_words_spin.state(("disabled",))
+        self.ai_words_spin.pack(side="left")
+
+        # Store references for enable/disable
+        self.auto_trigger_widgets = [self.ai_trigger_combo, self.ai_interval_combo, self.ai_words_spin, self.ai_interval_label, self.ai_words_label]
 
         # AI output Copy/Cut buttons with count
         ai_output_buttons_frame = ttk.Frame(self.controls_frame)
@@ -840,6 +859,13 @@ class App(tk.Tk):
                 self.ai_translate_only_check.state(("selected",))
                 # Trigger the mode changed handler to disable task controls
                 self.on_translate_mode_changed()
+
+            # Load AI manual mode checkbox
+            ai_manual_mode = self.settings.get("ai_manual_mode", False)
+            if ai_manual_mode:
+                self.ai_manual_mode_check.state(("selected",))
+                # Trigger the mode changed handler to enable/disable controls
+                self.on_trigger_mode_changed()
 
             # Load AI model selection
             ai_model_index = self.settings.get("ai_model_index", 0)
@@ -1073,6 +1099,30 @@ class App(tk.Tk):
             self.status_label.config(text=f"Clipboard error: {e}", foreground="red")
             return False
 
+    def on_trigger_mode_changed(self):
+        """Handle Manual mode checkbox - enable/disable manual vs automatic triggers."""
+        if not self.ai_available:
+            return
+
+        manual_mode = "selected" in self.ai_manual_mode_check.state()
+
+        if manual_mode:
+            # Manual mode: enable Process Now button, disable automatic triggers
+            self.ai_manual_button.state(("!disabled",))
+            for widget in self.auto_trigger_widgets:
+                try:
+                    widget.state(("disabled",))
+                except:
+                    widget.config(state="disabled")  # For Label widgets
+        else:
+            # Automatic mode: disable Process Now button, enable automatic triggers
+            self.ai_manual_button.state(("disabled",))
+            for widget in self.auto_trigger_widgets:
+                try:
+                    widget.state(("!disabled",))
+                except:
+                    widget.config(state="normal")  # For Label widgets
+
     def on_translate_mode_changed(self):
         """Handle Translate Only checkbox - disable/enable task controls."""
         if not self.ai_available:
@@ -1278,6 +1328,10 @@ class App(tk.Tk):
                 ai_translate_only = "selected" in self.ai_translate_only_check.state()
                 self.settings.set("ai_translate_only", ai_translate_only)
 
+                # Save AI manual mode checkbox
+                ai_manual_mode = "selected" in self.ai_manual_mode_check.state()
+                self.settings.set("ai_manual_mode", ai_manual_mode)
+
                 # Save AI persona selection
                 persona_idx = self.ai_persona_combo.current()
                 self.settings.set("ai_persona_index", persona_idx)
@@ -1432,13 +1486,22 @@ class App(tk.Tk):
                 ai_processor = None
 
         # Get AI processing parameters
-        if self.ai_available:
-            interval_label = self.ai_interval_combo.get()
-            ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))  # seconds
+        manual_mode = "selected" in self.ai_manual_mode_check.state() if self.ai_available else False
+
+        if manual_mode:
+            # Manual mode: set trigger to "manual" to skip automatic processing
+            ai_trigger_mode = "manual"
+            ai_process_interval = 999999  # Large value (won't be used)
+            ai_process_words = None
         else:
-            ai_process_interval = 20  # Default 20 seconds
-        ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
-        ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
+            # Automatic mode: use configured trigger settings
+            if self.ai_available:
+                interval_label = self.ai_interval_combo.get()
+                ai_process_interval = int(self.ai_interval_values_map.get(interval_label, "20"))  # seconds
+            else:
+                ai_process_interval = 20  # Default 20 seconds
+            ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
+            ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
 
         # Get auto-stop parameters from GUI
         auto_stop_enabled = "selected" in self.autostop_check.state()

@@ -33,6 +33,7 @@ class Settings:
             "ai_translate": False,  # Translate output checkbox
             "ai_translate_only": False,  # Translate-only mode (1:1 translation)
             "ai_persona_index": 0,  # Selected persona/task index
+            "ai_manual_mode": False,  # Manual trigger mode (disable automatic triggers)
             "ai_process_interval": 20,  # Seconds between AI processing (changed from minutes to seconds)
             "ai_trigger_mode": "time",  # "time" or "words"
             "ai_process_words": 150,  # Words per processing batch

@@ -497,27 +497,35 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 has_min_chars = len(accumulated_done) >= MIN_CHARS_TO_PROCESS
                 has_max_chars = len(accumulated_done) >= MAX_CHARS_TO_ACCUMULATE
 
-                # Time-based trigger (only active when trigger_mode == "time")
-                time_elapsed = time.time() - last_process_time
-                time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
-
-                # Word count trigger (only active when trigger_mode == "words")
-                word_count = len(accumulated_done.split()) if accumulated_done else 0
-                word_threshold_reached = word_count >= PROCESS_WORD_COUNT
-
-                # Silence timeout trigger - flush if no activity for SILENCE_TIMEOUT seconds
-                silence_elapsed = time.time() - last_activity_time
-                silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
-
                 # Manual trigger - process immediately when requested
                 manual_trigger_requested = manual_trigger and manual_trigger[0]
                 if manual_trigger_requested and accumulated_done:
                     print("[DEBUG] Manual AI trigger detected, processing immediately", flush=True)
                     manual_trigger[0] = False  # Reset flag
 
+                # Determine automatic triggers based on mode
+                if ai_trigger_mode == "manual":
+                    # Manual mode: only process on manual trigger, skip all automatic triggers
+                    time_threshold_reached = False
+                    word_threshold_reached = False
+                    silence_threshold_reached = False
+                else:
+                    # Automatic mode: enable configured triggers
+                    # Time-based trigger (only active when trigger_mode == "time")
+                    time_elapsed = time.time() - last_process_time
+                    time_threshold_reached = time_elapsed >= PROCESS_INTERVAL_SECONDS
+
+                    # Word count trigger (only active when trigger_mode == "words")
+                    word_count = len(accumulated_done.split()) if accumulated_done else 0
+                    word_threshold_reached = word_count >= PROCESS_WORD_COUNT
+
+                    # Silence timeout trigger - flush if no activity for SILENCE_TIMEOUT seconds
+                    silence_elapsed = time.time() - last_activity_time
+                    silence_threshold_reached = silence_elapsed >= SILENCE_TIMEOUT and len(accumulated_done.strip()) > 0
+
                 # Process if ANY of these conditions are met:
-                # 1. Normal case: 150+ chars AND paragraph break
-                # 2. Fallback case 1: 400+ chars (even without paragraph break)
+                # 1. Normal case: 150+ chars AND paragraph break (automatic only)
+                # 2. Fallback case 1: 400+ chars (even without paragraph break) (automatic only)
                 # 3. Fallback case 2: Time threshold reached (when in time mode)
                 # 4. Fallback case 3: Word count threshold reached (when in words mode)
                 # 5. Fallback case 4: Silence timeout reached (no speech for X seconds)
