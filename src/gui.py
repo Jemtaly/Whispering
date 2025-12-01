@@ -504,6 +504,40 @@ class App(tk.Tk):
             self.tts_check.state(("disabled",))
         self.tts_check.pack(side="left", padx=(0, 5))
 
+        # TTS Source selection (mutually exclusive)
+        tts_source_frame = ttk.Frame(self.controls_frame)
+        tts_source_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        ttk.Label(tts_source_frame, text="Source:").pack(side="left", padx=(0, 5))
+
+        self.tts_source_whisper = ttk.Checkbutton(tts_source_frame, text="W", onvalue=True, offvalue=False,
+                                                   command=lambda: self.on_tts_source_changed("whisper"))
+        if self.tts_available:
+            self.tts_source_whisper.state(("!alternate", "selected"))  # Default to Whisper
+        else:
+            self.tts_source_whisper.state(("disabled",))
+        self.tts_source_whisper.pack(side="left", padx=(0, 5))
+
+        self.tts_source_ai = ttk.Checkbutton(tts_source_frame, text="A", onvalue=True, offvalue=False,
+                                             command=lambda: self.on_tts_source_changed("ai"))
+        if self.tts_available:
+            self.tts_source_ai.state(("!alternate",))
+        else:
+            self.tts_source_ai.state(("disabled",))
+        self.tts_source_ai.pack(side="left", padx=(0, 5))
+
+        self.tts_source_translation = ttk.Checkbutton(tts_source_frame, text="T", onvalue=True, offvalue=False,
+                                                      command=lambda: self.on_tts_source_changed("translation"))
+        if self.tts_available:
+            self.tts_source_translation.state(("!alternate",))
+        else:
+            self.tts_source_translation.state(("disabled",))
+        self.tts_source_translation.pack(side="left", padx=(0, 5))
+
+        # Track current TTS source
+        self.tts_source_active = "whisper"  # Default to Whisper
+
         # Voice reference
         tts_voice_frame = ttk.Frame(self.controls_frame)
         tts_voice_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
@@ -600,11 +634,21 @@ class App(tk.Tk):
         if self.tts_available:
             tts_enabled = self.settings.get("tts_enabled", False)
             tts_save_file = self.settings.get("tts_save_file", False)
+            tts_source = self.settings.get("tts_source", "whisper")
 
             if tts_enabled:
                 self.tts_check.state(("selected",))
             if tts_save_file:
                 self.tts_save_check.state(("selected",))
+
+            # Restore TTS source selection
+            self.tts_source_active = tts_source
+            if tts_source == "whisper":
+                self.tts_source_whisper.state(("selected",))
+            elif tts_source == "ai":
+                self.tts_source_ai.state(("selected",))
+            elif tts_source == "translation":
+                self.tts_source_translation.state(("selected",))
 
         # Load and apply AI settings
         if self.ai_available:
@@ -685,6 +729,10 @@ class App(tk.Tk):
         except:
             pass
 
+        # Set initial trigger field visibility based on trigger mode
+        if self.ai_available:
+            self.on_trigger_changed()
+
         # Set initial window geometry based on mode
         if self.text_visible:
             self.geometry("900x980")  # Full mode
@@ -696,8 +744,8 @@ class App(tk.Tk):
 
     def on_new_transcription(self, text):
         """Called when NEW transcription text arrives. Auto-types if enabled."""
-        # Accumulate for TTS (capture ALL speech, not just proofread)
-        if self.tts_available and "selected" in self.tts_check.state():
+        # Accumulate for TTS if Whisper source is selected
+        if self.tts_available and "selected" in self.tts_check.state() and self.tts_source_active == "whisper":
             self.tts_session_text += text + " "
 
         # Show waiting indicator if we're in Translation or AI mode
@@ -726,6 +774,10 @@ class App(tk.Tk):
 
     def on_new_translation(self, text):
         """Called when NEW translated/proofread text arrives. Auto-types if Translation or AI mode selected."""
+        # Accumulate for TTS if Translation source is selected
+        if self.tts_available and "selected" in self.tts_check.state() and self.tts_source_active == "translation":
+            self.tts_session_text += text + " "
+
         # Auto-type Translation or AI output if those modes are selected
         if self.autotype_mode_active in ("Translation", "AI") and text:
             # Clear waiting message and show auto-typing indicator
@@ -780,6 +832,10 @@ class App(tk.Tk):
 
     def on_new_proofread(self, text):
         """Called when NEW proofread text arrives. Auto-types if AI mode selected."""
+        # Accumulate for TTS if AI source is selected
+        if self.tts_available and "selected" in self.tts_check.state() and self.tts_source_active == "ai":
+            self.tts_session_text += text + " "
+
         # Auto-type proofread output if AI mode is selected
         if self.autotype_mode_active == "AI" and text:
             # Clear waiting message and show auto-typing indicator
@@ -896,11 +952,27 @@ class App(tk.Tk):
                     widget.config(state="normal")  # For Label widgets
 
     def on_translate_mode_changed(self):
-        """Handle Translate Only checkbox - disable/enable task controls."""
+        """Handle Translate Only checkbox - disable/enable task controls and auto-enable AI."""
         if not self.ai_available:
             return
 
         translate_only = "selected" in self.ai_translate_only_check.state()
+        translate_output = "selected" in self.ai_translate_check.state()
+
+        # Validate target language is set before allowing translation
+        target = self.target_combo.get()
+        if (translate_only or translate_output) and (target is None or target == "none"):
+            # Uncheck the option and show warning
+            if translate_only:
+                self.ai_translate_only_check.state(("!selected",))
+            if translate_output:
+                self.ai_translate_check.state(("!selected",))
+            self.status_label.config(text="⚠ Please select a target language first", foreground="red")
+            return
+
+        # Auto-enable AI if translation features are used
+        if translate_only or translate_output:
+            self.ai_check.state(("selected",))
 
         if translate_only:
             # Translate Only mode: disable task and translate output checkbox
@@ -1019,6 +1091,28 @@ class App(tk.Tk):
             self.after(0, lambda: self.tts_status_label.config(
                 text=f"TTS error: {error_msg}", foreground="red"))
 
+    def on_tts_source_changed(self, source):
+        """Handle TTS source selection - make checkboxes mutually exclusive."""
+        if not self.tts_available:
+            return
+
+        # Update active source
+        self.tts_source_active = source
+
+        # Uncheck all others
+        if source == "whisper":
+            self.tts_source_whisper.state(("selected",))
+            self.tts_source_ai.state(("!selected",))
+            self.tts_source_translation.state(("!selected",))
+        elif source == "ai":
+            self.tts_source_whisper.state(("!selected",))
+            self.tts_source_ai.state(("selected",))
+            self.tts_source_translation.state(("!selected",))
+        else:  # translation
+            self.tts_source_whisper.state(("!selected",))
+            self.tts_source_ai.state(("!selected",))
+            self.tts_source_translation.state(("selected",))
+
     def toggle_text_display(self):
         """Toggle visibility of text panes."""
         if self.text_visible:
@@ -1083,6 +1177,7 @@ class App(tk.Tk):
                 tts_save_file = "selected" in self.tts_save_check.state()
                 self.settings.set("tts_enabled", tts_enabled)
                 self.settings.set("tts_save_file", tts_save_file)
+                self.settings.set("tts_source", self.tts_source_active)
             except Exception as e:
                 print(f"Error saving TTS settings: {e}")
 
@@ -1165,6 +1260,24 @@ class App(tk.Tk):
             self.mic_combo.current(0)
 
     def start(self):
+        # Validation: Check if target language is required but not set
+        target = self.target_combo.get()
+
+        # Check if translation is needed
+        needs_translation = False
+        if self.ai_available:
+            translate_only = self.ai_translate_only_check.instate(("selected",))
+            translate_output = self.ai_translate_check.instate(("selected",))
+            ai_enabled = self.ai_check.instate(("selected",))
+
+            if translate_only or (ai_enabled and translate_output):
+                needs_translation = True
+
+        # Validate target language
+        if needs_translation and (target is None or target == "none"):
+            self.status_label.config(text="⚠ Please select a target language for translation", foreground="red")
+            return
+
         self.ready[0] = False
         self.error[0] = None
         self.status_label.config(text="")
@@ -1265,6 +1378,7 @@ class App(tk.Tk):
             ai_trigger_mode = "manual"
             ai_process_interval = 999999  # Large value (won't be used)
             ai_process_words = None
+            print(f"[GUI] AI Trigger Mode: Manual", flush=True)
         else:
             # Automatic mode: use configured trigger settings
             if self.ai_available:
@@ -1274,6 +1388,12 @@ class App(tk.Tk):
                 ai_process_interval = 20  # Default 20 seconds
             ai_trigger_mode = self.ai_trigger_combo.get().lower() if self.ai_available else "time"
             ai_process_words = int(self.ai_words_spin.get()) if self.ai_available and ai_trigger_mode == "words" else None
+
+            # Debug logging
+            if ai_trigger_mode == "time":
+                print(f"[GUI] AI Trigger Mode: Time, Interval: {ai_process_interval}s", flush=True)
+            else:
+                print(f"[GUI] AI Trigger Mode: Words, Word Count: {ai_process_words}", flush=True)
 
         # Get auto-stop parameters from GUI
         auto_stop_enabled = "selected" in self.autostop_check.state()
@@ -1306,9 +1426,60 @@ class App(tk.Tk):
         self.starting()
         self.update_level()
 
+    def lock_ui_controls(self):
+        """Lock UI controls that shouldn't be changed while running."""
+        # Lock model settings
+        self.model_combo.state(("disabled",))
+        self.device_combo.state(("disabled",))
+        self.autotype_mode.state(("disabled",))
+
+        # Lock translation settings
+        if self.ai_available:
+            self.ai_translate_only_check.state(("disabled",))
+            self.ai_persona_combo.state(("disabled",))
+            self.ai_model_combo.state(("disabled",))
+
+        # Lock non-selected TTS source checkboxes
+        if self.tts_available:
+            if self.tts_source_active != "whisper":
+                self.tts_source_whisper.state(("disabled",))
+            if self.tts_source_active != "ai":
+                self.tts_source_ai.state(("disabled",))
+            if self.tts_source_active != "translation":
+                self.tts_source_translation.state(("disabled",))
+
+    def unlock_ui_controls(self):
+        """Unlock UI controls after stopping."""
+        # Unlock model settings
+        self.model_combo.state(("!disabled",))
+        self.device_combo.state(("readonly",))
+        self.autotype_mode.state(("readonly",))
+
+        # Unlock translation settings
+        if self.ai_available:
+            # Re-enable based on current state
+            translate_only = "selected" in self.ai_translate_only_check.state()
+            self.ai_translate_only_check.state(("!disabled",))
+
+            # Re-apply translate-only logic for task and translate output
+            if translate_only:
+                self.ai_persona_combo.state(("disabled",))
+            else:
+                self.ai_persona_combo.state(("!disabled",))
+
+            self.ai_model_combo.state(("!disabled",))
+
+        # Unlock all TTS source checkboxes
+        if self.tts_available:
+            self.tts_source_whisper.state(("!disabled",))
+            self.tts_source_ai.state(("!disabled",))
+            self.tts_source_translation.state(("!disabled",))
+
     def starting(self):
         if self.ready[0] is True:
             self.control_button.config(text="Stop", command=self.stop, state="normal")
+            # Lock UI controls when started
+            self.lock_ui_controls()
             return
         if self.ready[0] is None:
             if self.error[0]:
@@ -1327,6 +1498,9 @@ class App(tk.Tk):
         if self.ready[0] is None:
             self.control_button.config(text="Start", command=self.start, state="normal")
             self.level_bar['value'] = 0
+
+            # Unlock UI controls when stopped
+            self.unlock_ui_controls()
 
             # Finalize TTS session when stopping completes
             self.finalize_tts_session()
