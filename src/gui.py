@@ -568,8 +568,8 @@ class App(tk.Tk):
 
         # TTS status
         self.tts_status_label = ttk.Label(self.controls_frame, text="", foreground="blue",
-                                         wraplength=330, font=('TkDefaultFont', 8))
-        self.tts_status_label.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+                                         wraplength=340, font=('TkDefaultFont', 8))
+        self.tts_status_label.grid(row=row, column=0, sticky="ew", pady=(0, 5), padx=5)
         row += 1
 
         # === CONTROL BUTTON & LEVEL ===
@@ -600,8 +600,8 @@ class App(tk.Tk):
         ttk.Label(autostop_frame, text="min of inactivity").pack(side="left")
 
         # === STATUS ===
-        self.status_label = ttk.Label(self.controls_frame, text="", foreground="red", wraplength=330)
-        self.status_label.grid(row=row, column=0, sticky="ew")
+        self.status_label = ttk.Label(self.controls_frame, text="", foreground="red", wraplength=340)
+        self.status_label.grid(row=row, column=0, sticky="ew", padx=5)
         row += 1
 
         # State variables
@@ -1496,10 +1496,16 @@ class App(tk.Tk):
             # Re-enable based on current state
             translate_only = "selected" in self.ai_translate_only_check.state()
             self.ai_translate_only_check.state(("!disabled",))
-            self.ai_translate_check.state(("!disabled",))
+
+            # If Translate Only is selected, keep Translate Output disabled
+            if translate_only:
+                self.ai_translate_check.state(("disabled",))
+            else:
+                self.ai_translate_check.state(("!disabled",))
+
             self.ai_manual_mode_check.state(("!disabled",))
 
-            # Re-apply translate-only logic for task and translate output
+            # Re-apply translate-only logic for task combo
             if translate_only:
                 self.ai_persona_combo.state(("disabled",))
             else:
