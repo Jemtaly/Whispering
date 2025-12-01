@@ -4,6 +4,7 @@ import collections
 import io
 import math
 import threading
+import time
 import wave
 from urllib.parse import quote
 
@@ -12,6 +13,14 @@ import requests
 import sounddevice as sd
 from cmque import DataDeque, PairDeque, Queue
 from faster_whisper import WhisperModel
+
+# Import AI modules at top level
+try:
+    from ai_config import AIConfig
+    from ai_provider import AITextProcessor
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
 
 
 models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"]
@@ -326,6 +335,57 @@ def translate(text, source, target, timeout):
         return [(text, "Translation service is unavailable.")]
 
 
+def parse_ai_proofread_translate(text):
+    """
+    Parse AI output when using proofread+translate mode.
+
+    Expected format:
+    PROOFREAD:
+    [corrected text]
+
+    TRANSLATE:
+    [translated text]
+
+    Returns:
+        (proofread_text, translate_text) tuple
+        If parsing fails, returns ("", text) to show translation only
+    """
+    if not text:
+        return ("", "")
+
+    # Try to parse the structured output
+    text_upper = text.upper()
+
+    # Look for PROOFREAD: and TRANSLATE: markers
+    proofread_marker = text_upper.find("PROOFREAD:")
+    translate_marker = text_upper.find("TRANSLATE:")
+
+    if proofread_marker != -1 and translate_marker != -1:
+        # Both markers found - extract sections
+        proofread_start = proofread_marker + len("PROOFREAD:")
+        proofread_end = translate_marker
+
+        proofread_text = text[proofread_start:proofread_end].strip()
+        translate_text = text[translate_marker + len("TRANSLATE:"):].strip()
+
+        return (proofread_text, translate_text)
+
+    elif translate_marker != -1:
+        # Only TRANSLATE marker found - might be translate-only mode
+        translate_text = text[translate_marker + len("TRANSLATE:"):].strip()
+        return ("", translate_text)
+
+    elif proofread_marker != -1:
+        # Only PROOFREAD marker found - might be proofread-only mode
+        proofread_text = text[proofread_marker + len("PROOFREAD:"):].strip()
+        return (proofread_text, "")
+
+    else:
+        # No markers found - treat entire text as translation
+        # (AI might have returned only the translated text)
+        return ("", text)
+
+
 def ai_translate(text, ai_processor):
     """
     Translate/process text using AI provider.
@@ -347,7 +407,7 @@ def ai_translate(text, ai_processor):
         return (text, f"AI processing error: {str(e)}")
 
 
-def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60):
+def proc(index, model, vad, memory, patience, timeout, prompt, source, target, tsres_queue, tlres_queue, ready, device="cpu", error=None, level=None, para_detect=True, para_threshold_std=1.5, para_min_pause=0.8, para_max_chars=500, para_max_words=100, ai_processor=None, ai_process_interval=2, ai_process_words=None, ai_trigger_mode="time", silence_timeout=60, prres_queue=None):
     # Create paragraph detector if enabled
     para_detector = ParagraphDetector(
         threshold_std=para_threshold_std,
@@ -400,17 +460,29 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
 
         rsrv_src = ""
         accumulated_done = ""  # Accumulate done text before processing
+        last_curr_src = ""  # Track last curr_src for exit processing
         last_process_time = time.time()  # Track when we last processed
         last_activity_time = time.time()  # Track when we last received text
+        start_time = time.time()  # Track total runtime for auto-stop
 
         MIN_CHARS_TO_PROCESS = 150  # Minimum characters before AI processing
         MAX_CHARS_TO_ACCUMULATE = 400  # Force processing if text gets too long
-        PROCESS_INTERVAL_SECONDS = ai_process_interval * 60 if ai_trigger_mode == "time" else float('inf')
+        PROCESS_INTERVAL_SECONDS = ai_process_interval if ai_trigger_mode == "time" else float('inf')  # Already in seconds
         PROCESS_WORD_COUNT = ai_process_words if ai_trigger_mode == "words" and ai_process_words else float('inf')
         SILENCE_TIMEOUT = silence_timeout  # Flush after this many seconds of silence
+        AUTO_STOP_DURATION = 300  # Auto-stop after 5 minutes (300 seconds) of running
 
         while ts2tl := ts2tl_queue.get():
             done_src, curr_src = ts2tl
+
+            # Track last curr_src for exit processing
+            last_curr_src = curr_src
+
+            # Check for auto-stop (5 minutes)
+            if time.time() - start_time >= AUTO_STOP_DURATION:
+                print("[INFO] Auto-stopping after 5 minutes", flush=True)
+                ready[0] = False  # Signal stop
+                break
 
             # Use AI processing if available
             if ai_processor:
@@ -465,25 +537,108 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                         accumulated_done = ""
 
                     if to_process:
-                        # Process with AI
-                        processed, ai_error = ai_translate(to_process, ai_processor)
-                        if ai_error:
-                            # Log error to console but continue with result
-                            print(f"AI Error: {ai_error}", flush=True)
+                        # Process with AI - DETAILED DEBUG
+                        print(f"\n[DEBUG] ========== CONDITION CHECK ==========", flush=True)
+                        print(f"[DEBUG] 1. prres_queue = {prres_queue}", flush=True)
+                        print(f"[DEBUG]    prres_queue is not None = {prres_queue is not None}", flush=True)
+                        print(f"[DEBUG]    prres_queue bool = {bool(prres_queue)} (NOTE: Queue.__bool__ returns False when empty!)", flush=True)
+                        print(f"[DEBUG] 2. ai_processor = {ai_processor}", flush=True)
+                        print(f"[DEBUG]    ai_processor bool = {bool(ai_processor)}", flush=True)
+                        if ai_processor:
+                            print(f"[DEBUG] 3. ai_processor.mode = '{ai_processor.mode}'", flush=True)
+                            print(f"[DEBUG]    mode == 'proofread_translate' = {ai_processor.mode == 'proofread_translate'}", flush=True)
+                        print(f"[DEBUG] 4. AI_AVAILABLE = {AI_AVAILABLE}", flush=True)
 
-                        # Determine separator based on context
-                        separator = '\n\n' if has_paragraph_break else ' '
-                        last_process_time = time.time()  # Reset timer after processing
+                        # Check combined condition (FIX: use 'is not None' instead of bool check!)
+                        combined = bool(prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE)
+                        print(f"[DEBUG] 5. COMBINED CONDITION = {combined}", flush=True)
+                        print(f"[DEBUG] ======================================\n", flush=True)
 
-                        # Send the NEW processed chunk - ONLY send when we have processed text
-                        tlres_queue.put((processed + separator, ""))
+                        if prres_queue is not None and ai_processor and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
+                            # Make TWO separate calls for proofread+translate mode
+                            print(f"[DEBUG] ========== EXECUTING TWO-CALL AI PROCESSING ==========", flush=True)
+                            print(f"[DEBUG] Input text: {to_process[:100]}...", flush=True)
+
+                            # FIRST CALL: Proofread only
+                            print(f"[DEBUG] STEP 1: Creating proofread-only processor", flush=True)
+                            config = AIConfig()
+                            proofread_processor = AITextProcessor(
+                                config=config,
+                                model_id=ai_processor.provider.model_id,
+                                mode="proofread",  # Use proofread-only mode
+                                source_lang=ai_processor.source_lang,
+                                target_lang=None
+                            )
+                            print(f"[DEBUG] STEP 2: Calling AI for proofread", flush=True)
+                            proofread_text, pr_error = ai_translate(to_process, proofread_processor)
+                            print(f"[DEBUG] STEP 3: Proofread result: '{proofread_text[:150]}'...", flush=True)
+                            if pr_error:
+                                print(f"[DEBUG] Proofread Error: {pr_error}", flush=True)
+
+                            # SECOND CALL: Translate the proofread text
+                            print(f"[DEBUG] STEP 4: Creating translate-only processor", flush=True)
+                            translate_processor = AITextProcessor(
+                                config=config,
+                                model_id=ai_processor.provider.model_id,
+                                mode="translate",  # Use translate-only mode
+                                source_lang=ai_processor.source_lang,
+                                target_lang=ai_processor.target_lang
+                            )
+                            print(f"[DEBUG] STEP 5: Calling AI for translation (input=proofread text)", flush=True)
+                            translate_text, tr_error = ai_translate(proofread_text, translate_processor)
+                            print(f"[DEBUG] STEP 6: Translation result: '{translate_text[:150]}'...", flush=True)
+                            if tr_error:
+                                print(f"[DEBUG] Translation Error: {tr_error}", flush=True)
+
+                            # Determine separators - use paragraph breaks for proofread for better readability
+                            # Use smart separator for translation (paragraph break or space)
+                            proofread_separator = '\n\n'  # Always use paragraph breaks for proofread output
+                            translation_separator = '\n\n' if has_paragraph_break else ' '
+                            last_process_time = time.time()  # Reset timer after processing
+
+                            # Send proofread to pr queue, translation to tl queue
+                            print(f"[DEBUG] STEP 7: Sending to queues...", flush=True)
+                            print(f"[DEBUG]   - Sending proofread ({len(proofread_text)} chars) to PR_QUEUE", flush=True)
+                            print(f"[DEBUG]   - Sending translation ({len(translate_text)} chars) to TL_QUEUE", flush=True)
+                            if proofread_text:
+                                prres_queue.put((proofread_text + proofread_separator, ""))
+                                print(f"[DEBUG]   ✓ Sent to PR_QUEUE", flush=True)
+                            if translate_text:
+                                tlres_queue.put((translate_text + translation_separator, ""))
+                                print(f"[DEBUG]   ✓ Sent to TL_QUEUE", flush=True)
+                            print(f"[DEBUG] ========== TWO-CALL PROCESSING COMPLETE ==========", flush=True)
+                        else:
+                            # Single AI call (proofread-only or translate-only)
+                            print(f"[DEBUG] Using SINGLE AI call (mode: {ai_processor.mode if ai_processor else 'None'})", flush=True)
+                            processed, ai_error = ai_translate(to_process, ai_processor)
+                            if ai_error:
+                                # Log error to console but continue with result
+                                print(f"AI Error: {ai_error}", flush=True)
+
+                            # Determine separator based on context
+                            separator = '\n\n' if has_paragraph_break else ' '
+                            last_process_time = time.time()  # Reset timer after processing
+
+                            # Send the NEW processed chunk - ONLY send when we have processed text
+                            print(f"[DEBUG] Sending single AI result to TL_QUEUE", flush=True)
+                            tlres_queue.put((processed + separator, ""))
             else:
                 # Use original Google Translate
                 if done_src or rsrv_src:
                     done_src = rsrv_src + done_src
                     done_snt = translate(done_src, source, target, timeout)
-                    rsrv_src = done_snt.pop()[0]
-                    done_tgt = "".join(t for s, t in done_snt)
+                    # Only pop reserve if we have multiple segments
+                    if len(done_snt) > 1:
+                        rsrv_src = done_snt.pop()[0]
+                        done_tgt = "".join(t for s, t in done_snt)
+                    elif len(done_snt) == 1:
+                        # Don't pop if only one segment - use it all
+                        done_tgt = done_snt[0][1]
+                        rsrv_src = ""
+                    else:
+                        # Empty translation result
+                        done_tgt = ""
+                        rsrv_src = ""
                 else:
                     done_tgt = ""
                 curr_src = rsrv_src + curr_src
@@ -492,11 +647,56 @@ def proc(index, model, vad, memory, patience, timeout, prompt, source, target, t
                 tlres_queue.put((done_tgt, curr_tgt))
 
         # Process any remaining accumulated text on exit
-        if ai_processor and accumulated_done and accumulated_done.strip():
-            final_tgt, _ = ai_translate(accumulated_done, ai_processor)
-            tlres_queue.put((final_tgt, ""))
+        # Combine accumulated_done with last_curr_src to ensure nothing is lost
+        final_text = accumulated_done
+        if last_curr_src and last_curr_src.strip():
+            print(f"[DEBUG] EXIT: Found curr_src text: '{last_curr_src.strip()}'", flush=True)
+            final_text = accumulated_done + last_curr_src
+
+        if ai_processor and final_text and final_text.strip():
+            print(f"[DEBUG] EXIT: Processing remaining text ({len(final_text)} chars)", flush=True)
+            print(f"[DEBUG] EXIT: Text = '{final_text[:200]}'...", flush=True)
+            if prres_queue is not None and ai_processor.mode == "proofread_translate" and AI_AVAILABLE:
+                # Make TWO separate calls for proofread+translate mode
+                print(f"[DEBUG] EXIT: Using two-call processing", flush=True)
+                config = AIConfig()
+                proofread_processor = AITextProcessor(
+                    config=config,
+                    model_id=ai_processor.provider.model_id,
+                    mode="proofread",
+                    source_lang=ai_processor.source_lang,
+                    target_lang=None
+                )
+
+                proofread_text, _ = ai_translate(final_text, proofread_processor)
+                print(f"[DEBUG] EXIT: Proofread result: '{proofread_text[:100]}'", flush=True)
+
+                translate_processor = AITextProcessor(
+                    config=config,
+                    model_id=ai_processor.provider.model_id,
+                    mode="translate",
+                    source_lang=ai_processor.source_lang,
+                    target_lang=ai_processor.target_lang
+                )
+
+                translate_text, _ = ai_translate(proofread_text, translate_processor)
+                print(f"[DEBUG] EXIT: Translation result: '{translate_text[:100]}'", flush=True)
+
+                if proofread_text:
+                    prres_queue.put((proofread_text, ""))
+                    print(f"[DEBUG] EXIT: Sent proofread to PR_QUEUE", flush=True)
+                if translate_text:
+                    tlres_queue.put((translate_text, ""))
+                    print(f"[DEBUG] EXIT: Sent translation to TL_QUEUE", flush=True)
+            else:
+                # Single AI call
+                print(f"[DEBUG] EXIT: Using single AI call", flush=True)
+                final_tgt, _ = ai_translate(final_text, ai_processor)
+                tlres_queue.put((final_tgt, ""))
 
         tlres_queue.put(None)
+        if prres_queue:
+            prres_queue.put(None)
 
     try:
         # Load model first (before opening audio stream)
