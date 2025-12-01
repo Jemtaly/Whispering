@@ -579,17 +579,24 @@ class App(tk.Tk):
             self.ai_persona_combo.state(("disabled",))
         self.ai_persona_combo.pack(side="left", fill="x", expand=True)
 
-        # AI Translate checkbox
+        # AI Translate controls
         ai_translate_frame = ttk.Frame(self.controls_frame)
         ai_translate_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
         row += 1
 
-        self.ai_translate_check = ttk.Checkbutton(ai_translate_frame, text="Translate output", onvalue=True, offvalue=False)
+        self.ai_translate_check = ttk.Checkbutton(ai_translate_frame, text="Translate output", onvalue=True, offvalue=False, command=self.on_translate_mode_changed)
         if self.ai_available:
             self.ai_translate_check.state(("!alternate",))
         else:
             self.ai_translate_check.state(("disabled",))
-        self.ai_translate_check.pack(side="left", padx=(0, 5))
+        self.ai_translate_check.pack(side="left", padx=(0, 10))
+
+        self.ai_translate_only_check = ttk.Checkbutton(ai_translate_frame, text="Translate Only (1:1)", onvalue=True, offvalue=False, command=self.on_translate_mode_changed)
+        if self.ai_available:
+            self.ai_translate_only_check.state(("!alternate",))
+        else:
+            self.ai_translate_only_check.state(("disabled",))
+        self.ai_translate_only_check.pack(side="left")
 
         # AI Model
         ai_model_frame = ttk.Frame(self.controls_frame)
@@ -635,21 +642,25 @@ class App(tk.Tk):
             self.ai_manual_button.state(("disabled",))
         self.ai_manual_button.pack(side="right")
 
-        # AI Interval/Words (same row, toggled)
-        self.ai_interval_label = ttk.Label(ai_trigger_frame, text=" sec:")
-        self.ai_interval_label.pack(side="left", padx=(5, 2))
+        # AI Interval/Words (new row for better layout)
+        ai_interval_frame = ttk.Frame(self.controls_frame)
+        ai_interval_frame.grid(row=row, column=0, sticky="ew", pady=(0, 5))
+        row += 1
+
+        self.ai_interval_label = ttk.Label(ai_interval_frame, text="Interval:")
+        self.ai_interval_label.pack(side="left", padx=(0, 2))
         # Intervals: 5, 10, 15, 20, 25, 30, 45 seconds, 60 (1min), 90 (1.5min), 120 (2min)
         interval_values = ["5", "10", "15", "20", "25", "30", "45", "60", "90", "120"]
         interval_labels = ["5s", "10s", "15s", "20s", "25s", "30s", "45s", "1m", "1.5m", "2m"]
-        self.ai_interval_combo = ttk.Combobox(ai_trigger_frame, values=interval_labels, state="readonly", width=6)
+        self.ai_interval_combo = ttk.Combobox(ai_interval_frame, values=interval_labels, state="readonly", width=6)
         self.ai_interval_combo.current(3)  # Default to 20 seconds
         self.ai_interval_values_map = dict(zip(interval_labels, interval_values))  # Map display to actual values
         if not self.ai_available:
             self.ai_interval_combo.state(("disabled",))
         self.ai_interval_combo.pack(side="left")
 
-        self.ai_words_label = ttk.Label(ai_trigger_frame, text=" words:")
-        self.ai_words_spin = ttk.Spinbox(ai_trigger_frame, from_=50, to=500, increment=50, state="readonly", width=5)
+        self.ai_words_label = ttk.Label(ai_interval_frame, text=" words:")
+        self.ai_words_spin = ttk.Spinbox(ai_interval_frame, from_=50, to=500, increment=50, state="readonly", width=5)
         self.ai_words_spin.set(150)
         if not self.ai_available:
             self.ai_words_spin.state(("disabled",))
@@ -822,6 +833,13 @@ class App(tk.Tk):
             ai_translate = self.settings.get("ai_translate", False)
             if ai_translate:
                 self.ai_translate_check.state(("selected",))
+
+            # Load AI translate-only checkbox
+            ai_translate_only = self.settings.get("ai_translate_only", False)
+            if ai_translate_only:
+                self.ai_translate_only_check.state(("selected",))
+                # Trigger the mode changed handler to disable task controls
+                self.on_translate_mode_changed()
 
             # Load AI model selection
             ai_model_index = self.settings.get("ai_model_index", 0)
@@ -1055,6 +1073,22 @@ class App(tk.Tk):
             self.status_label.config(text=f"Clipboard error: {e}", foreground="red")
             return False
 
+    def on_translate_mode_changed(self):
+        """Handle Translate Only checkbox - disable/enable task controls."""
+        if not self.ai_available:
+            return
+
+        translate_only = "selected" in self.ai_translate_only_check.state()
+
+        if translate_only:
+            # Translate Only mode: disable task and translate output checkbox
+            self.ai_persona_combo.state(("disabled",))
+            self.ai_translate_check.state(("disabled",))
+        else:
+            # Normal mode: enable task and translate output checkbox
+            self.ai_persona_combo.state(("!disabled",))
+            self.ai_translate_check.state(("!disabled",))
+
     def manual_ai_trigger(self):
         """Manual trigger for AI processing - process accumulated text immediately."""
         if not self.ready[0]:
@@ -1240,6 +1274,10 @@ class App(tk.Tk):
                 ai_translate = "selected" in self.ai_translate_check.state()
                 self.settings.set("ai_translate", ai_translate)
 
+                # Save AI translate-only checkbox
+                ai_translate_only = "selected" in self.ai_translate_only_check.state()
+                self.settings.set("ai_translate_only", ai_translate_only)
+
                 # Save AI persona selection
                 persona_idx = self.ai_persona_combo.current()
                 self.settings.set("ai_persona_index", persona_idx)
@@ -1343,28 +1381,35 @@ class App(tk.Tk):
                 selected_model_id = models[model_idx]['id']
 
                 # Get persona and translate settings
-                persona_idx = self.ai_persona_combo.current()
-                persona_id = self.persona_ids[persona_idx]
-                translate_enabled = self.ai_translate_check.instate(("selected",))
+                translate_only = self.ai_translate_only_check.instate(("selected",))
 
-                # Determine mode based on persona and translate checkbox
-                # Map new UI to existing mode system
-                if persona_id == "none":
-                    # Direct translation only (no processing)
+                # Determine mode based on translate-only or task mode
+                if translate_only:
+                    # Translate Only mode: direct 1:1 AI translation (no processing)
                     mode = "translate"
-                elif persona_id == "proofread":
-                    # Built-in proofread persona
-                    if translate_enabled and target is not None:
-                        mode = "proofread_translate"
-                    else:
-                        mode = "proofread"
+                    persona_name = "Translate Only"
                 else:
-                    # Custom persona - for now, treat as proofread
-                    # TODO: Add custom persona support to ai_provider.py
-                    if translate_enabled and target is not None:
-                        mode = "proofread_translate"
+                    # Task mode: get persona and translate settings
+                    persona_idx = self.ai_persona_combo.current()
+                    persona_id = self.persona_ids[persona_idx]
+                    translate_enabled = self.ai_translate_check.instate(("selected",))
+
+                    # Map persona + translate to mode
+                    if persona_id == "proofread":
+                        # Built-in proofread persona
+                        if translate_enabled and target is not None:
+                            mode = "proofread_translate"
+                        else:
+                            mode = "proofread"
                     else:
-                        mode = "proofread"
+                        # Custom persona - for now, treat as proofread
+                        # TODO: Add custom persona support to ai_provider.py
+                        if translate_enabled and target is not None:
+                            mode = "proofread_translate"
+                        else:
+                            mode = "proofread"
+
+                    persona_name = self.ai_persona_combo.get()
 
                 # Create AI processor
                 ai_processor = AITextProcessor(
@@ -1376,9 +1421,11 @@ class App(tk.Tk):
                 )
 
                 # Display status
-                persona_name = self.ai_persona_combo.get()
-                translate_status = " + Translate" if translate_enabled and target else ""
-                self.status_label.config(text=f"AI: {models[model_idx]['name']} ({persona_name}{translate_status})", foreground="green")
+                if translate_only:
+                    self.status_label.config(text=f"AI: {models[model_idx]['name']} (Translate Only)", foreground="green")
+                else:
+                    translate_status = " + Translate" if translate_enabled and target else ""
+                    self.status_label.config(text=f"AI: {models[model_idx]['name']} ({persona_name}{translate_status})", foreground="green")
             except Exception as e:
                 self.status_label.config(text=f"AI Error: {str(e)[:50]}", foreground="red")
                 print(f"Failed to initialize AI processor: {e}")

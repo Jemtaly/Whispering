@@ -121,13 +121,6 @@ class AIConfig:
             'builtin': True
         })
 
-        personas.append({
-            'id': 'none',
-            'name': 'None (Translate Only)',
-            'description': 'No processing, direct translation',
-            'builtin': True
-        })
-
         # Add custom personas
         for persona_id, persona_data in self.custom_personas.items():
             personas.append({
