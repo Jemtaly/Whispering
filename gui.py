@@ -4,13 +4,13 @@ import tkinter as tk
 import tkinter.ttk as ttk
 
 import core
-from que import Queue, Pair
+from que import ConflatingQueue, Pair
 
 
 class Text(tk.Text):
     def __init__(self, master):
         super().__init__(master)
-        self.res_queue = Queue[Pair]()
+        self.res_queue = ConflatingQueue[Pair]()
         self.tag_config("done", foreground="black")
         self.tag_config("curr", foreground="blue", underline=True)
         self.insert("end", "  ", "done")
@@ -112,7 +112,7 @@ class App(tk.Tk):
     def on_started(self, proc: core.Processor):
         def stop():
             self.control_button.config(text="Stopping...", state="disabled")
-            proc.stop(self.on_stopped)
+            proc.stop()
 
         self.control_button.config(text="Stop", command=stop, state="normal")
 
@@ -135,11 +135,12 @@ class App(tk.Tk):
                 target=None if self.target_combo.get() == "none" else self.target_combo.get(),
                 tsres_queue=self.ts_text.res_queue,
                 tlres_queue=self.tl_text.res_queue,
-                on_success=self.on_started,
                 on_failure=self.on_stopped,
-                log_cc_errors=print,
-                log_ts_errors=print,
-                log_tl_errors=print,
+                on_success=self.on_started,
+                on_stopped=self.on_stopped,
+                on_cc_error=print,
+                on_ts_error=print,
+                on_tl_error=print,
             )
 
         self.control_button.config(text="Start", command=start, state="normal")

@@ -12,7 +12,7 @@ class Extendable(Protocol):
 T = TypeVar("T", bound=Extendable)
 
 
-class Queue(Generic[T]):
+class ConflatingQueue(Generic[T]):
     def __init__(self):
         self.deque = deque[T | None]()
         self.cond = threading.Condition()

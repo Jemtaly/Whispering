@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import requests
 import speech_recognition as sr
-from que import Queue, Pair, Data
+from que import ConflatingQueue, Pair, Data
 from faster_whisper import WhisperModel
 
 import os
@@ -132,11 +132,11 @@ class Processor:
         timeout: float,
         source: str | None,
         target: str | None,
-        tsres_queue: Queue[Pair],
-        tlres_queue: Queue[Pair],
-        log_cc_errors: Callable[[Exception], None] = lambda _: None,
-        log_ts_errors: Callable[[Exception], None] = lambda _: None,
-        log_tl_errors: Callable[[Exception], None] = lambda _: None,
+        tsres_queue: ConflatingQueue[Pair],
+        tlres_queue: ConflatingQueue[Pair],
+        on_cc_error: Callable[[Exception], None] = lambda _: None,
+        on_ts_error: Callable[[Exception], None] = lambda _: None,
+        on_tl_error: Callable[[Exception], None] = lambda _: None,
     ):
         self.mic = sr.Microphone(index)
         self.ts_proc = TranscriptionProcessor(
@@ -155,23 +155,38 @@ class Processor:
             target=target,
             timeout=timeout,
         )
-        self.running = True
-        self.on_stopped = lambda: None
+        self.is_running = False
         self.tsres_queue = tsres_queue
         self.tlres_queue = tlres_queue
-        self.frame_queue = Queue[Data]()
-        self.ts2tl_queue = Queue[Pair]()
-        self.log_cc_errors = log_cc_errors
-        self.log_ts_errors = log_ts_errors
-        self.log_tl_errors = log_tl_errors
+        self.frame_queue = ConflatingQueue[Data]()
+        self.ts2tl_queue = ConflatingQueue[Pair]()
+        self.on_cc_error = on_cc_error
+        self.on_ts_error = on_ts_error
+        self.on_tl_error = on_tl_error
+
+    def stop(self):
+        self.is_running = False
+
+    def run(self, on_stopped: Callable[[], None]):
+        self.is_running = True
+        cc_thread = Thread(target=self.cc_task)
+        ts_thread = Thread(target=self.ts_task)
+        tl_thread = Thread(target=self.tl_task)
+        cc_thread.start()
+        ts_thread.start()
+        tl_thread.start()
+        cc_thread.join()
+        ts_thread.join()
+        tl_thread.join()
+        on_stopped()
 
     def cc_task(self):
         try:
             with self.mic:
-                while self.running:
-                    self.frame_queue.put(Data(self.mic.stream.read(self.mic.CHUNK)))
+                while self.is_running:
+                    self.frame_queue.put(Data(self.mic.stream.read(self.mic.CHUNK)))  # type: ignore
         except Exception as err:
-            self.log_cc_errors(err)
+            self.on_cc_error(err)
         finally:
             self.frame_queue.put(None)
 
@@ -182,7 +197,7 @@ class Processor:
                 self.ts2tl_queue.put(src)
                 self.tsres_queue.put(src)
         except Exception as err:
-            self.log_ts_errors(err)
+            self.on_ts_error(err)
         finally:
             self.ts2tl_queue.put(None)
             self.tsres_queue.put(None)
@@ -193,25 +208,9 @@ class Processor:
                 tgt = self.tl_proc.update(ts2tl)
                 self.tlres_queue.put(tgt)
         except Exception as err:
-            self.log_tl_errors(err)
+            self.on_tl_error(err)
         finally:
             self.tlres_queue.put(None)
-
-    def run(self):
-        cc_thread = Thread(target=self.cc_task)
-        ts_thread = Thread(target=self.ts_task)
-        tl_thread = Thread(target=self.tl_task)
-        cc_thread.start()
-        ts_thread.start()
-        tl_thread.start()
-        cc_thread.join()
-        ts_thread.join()
-        tl_thread.join()
-        self.on_stopped()
-
-    def stop(self, on_stopped: Callable[[], None]):
-        self.running = False
-        self.on_stopped = on_stopped
 
 
 def start(
@@ -225,13 +224,14 @@ def start(
     timeout: float,
     source: str | None,
     target: str | None,
-    tsres_queue: Queue[Pair],
-    tlres_queue: Queue[Pair],
-    on_success: Callable[[Processor], None],
+    tsres_queue: ConflatingQueue[Pair],
+    tlres_queue: ConflatingQueue[Pair],
     on_failure: Callable[[Exception], None],
-    log_cc_errors: Callable[[Exception], None] = lambda _: None,
-    log_ts_errors: Callable[[Exception], None] = lambda _: None,
-    log_tl_errors: Callable[[Exception], None] = lambda _: None,
+    on_success: Callable[[Processor], None],
+    on_stopped: Callable[[], None],
+    on_cc_error: Callable[[Exception], None] = lambda _: None,
+    on_ts_error: Callable[[Exception], None] = lambda _: None,
+    on_tl_error: Callable[[Exception], None] = lambda _: None,
 ):
     def task():
         try:
@@ -248,14 +248,14 @@ def start(
                 target=target,
                 tsres_queue=tsres_queue,
                 tlres_queue=tlres_queue,
-                log_cc_errors=log_cc_errors,
-                log_ts_errors=log_ts_errors,
-                log_tl_errors=log_tl_errors,
+                on_cc_error=on_cc_error,
+                on_ts_error=on_ts_error,
+                on_tl_error=on_tl_error,
             )
         except Exception as err:
             on_failure(err)
         else:
             on_success(proc)
-            proc.run()
+            proc.run(on_stopped)
 
     Thread(target=task, daemon=True).start()
