@@ -56,10 +56,11 @@ class App(tk.Tk):
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
+        self.mic_manager = core.SoundcardMicManager()
         self.mic_label = ttk.Label(self.top_frame, text="Mic:")
-        self.mic_combo = ttk.Combobox(self.top_frame, values=["default"], state="readonly")
+        self.mic_combo = ttk.Combobox(self.top_frame, values=self.mic_manager.list_microphones(), state="readonly")
         self.mic_combo.current(0)
-        self.mic_button = ttk.Button(self.top_frame, text="Refresh", command=lambda: self.mic_combo.config(values=["default"] + core.get_mic_names()))
+        self.mic_button = ttk.Button(self.top_frame, text="Refresh", command=lambda: self.mic_combo.config(values=self.mic_manager.refresh().list_microphones()))
         self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
         self.model_combo = ttk.Combobox(self.top_frame, values=core.MODELS, state="normal")
         self.model_combo.set("")
@@ -123,7 +124,7 @@ class App(tk.Tk):
         def start():
             self.control_button.config(text="Starting...", state="disabled")
             core.start(
-                index=None if self.mic_combo.current() == 0 else self.mic_combo.current() - 1,
+                id=self.mic_manager.get_microphone_by_index(self.mic_combo.current()),
                 model=self.model_combo.get(),
                 device=self.device_combo.get(),
                 vad=self.vad_check.instate(("selected",)),

@@ -1,14 +1,16 @@
 from collections import deque
 from dataclasses import dataclass
-from io import BytesIO
 from threading import Thread
-from typing import Callable
-from urllib.parse import quote
+from typing import Callable, Self
 
+from urllib.parse import quote
 import requests
-import speech_recognition as sr
-from que import ConflatingQueue, Pair, Data
+
+import numpy as np
+import soundcard as sc
 from faster_whisper import WhisperModel
+
+from que import ConflatingQueue, Pair, Data
 
 import os
 
@@ -19,17 +21,61 @@ MODELS = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3",
 DEVICES = ["auto", "cpu", "cuda"]
 
 
-def get_mic_names() -> list[str]:
-    return sr.Microphone.list_microphone_names()
+class SoundcardMicManager:
+    def __init__(self):
+        self.microphones = [None, *sc.all_microphones(include_loopback=True)]
+
+    def refresh(self) -> Self:
+        self.microphones = [None, *sc.all_microphones(include_loopback=True)]
+        return self
+
+    def list_microphones(self) -> list[str]:
+        result = []
+        for mic in self.microphones:
+            if mic is None:
+                kind = "default"
+                name = "Default Microphone"
+            else:
+                kind = "loopback" if mic.isloopback else "microphone"
+                name = mic.name
+            result.append(f"[{kind}] {name}")
+        return result
+
+    def get_microphone_by_index(self, index: int) -> str | None:
+        mic = self.microphones[index]
+        return mic.id if mic is not None else None
 
 
-def get_mic_index(mic: str | None) -> int | None:
-    if mic is None:
-        return None
-    for index, name in enumerate(sr.Microphone.list_microphone_names()):
-        if mic in name:
-            return index
-    raise ValueError("Microphone device not found.")
+class SoundcardMicProcessor:
+    def __init__(
+        self,
+        mic_id: str | None = None,
+        sample_chunk: int = 1024,
+    ):
+        if mic_id is None:
+            self.mic = sc.default_microphone()
+        else:
+            self.mic = sc.get_microphone(id=mic_id, include_loopback=True)
+        self.rec = self.mic.recorder(samplerate=16000, channels=self.mic.channels)
+        self.sample_chunk = sample_chunk
+
+    def __enter__(self) -> None:
+        self.rec.__enter__()
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.rec.__exit__(exc_type, exc_value, traceback)
+
+    def read(self) -> Data:
+        audio = self.rec.record(numframes=self.sample_chunk).mean(axis=1)
+        return bytearray(audio.tobytes())
+
+    @property
+    def sample_rate(self) -> int:
+        return self.rec.samplerate
+
+    @property
+    def frame_dtype(self) -> np.dtype:
+        return np.dtype(np.float32)
 
 
 class TranscriptionProcessor:
@@ -43,7 +89,7 @@ class TranscriptionProcessor:
         memory: int,
         patience: float,
         sample_rate: int,
-        sample_width: int,
+        frame_dtype: np.dtype,
     ):
         self.model = WhisperModel(model, device)
         self.vad = vad
@@ -52,15 +98,14 @@ class TranscriptionProcessor:
         self.window = Data()
         self.patience = patience
         self.sample_rate = sample_rate
-        self.sample_width = sample_width
+        self.frame_dtype = frame_dtype
 
     def update(self, frame: Data) -> Pair:
         self.window.extend(frame)
-        audio = sr.AudioData(self.window, self.sample_rate, self.sample_width)
-        with BytesIO(audio.get_wav_data()) as audio_file:
-            segments, info = self.model.transcribe(audio_file, language=self.lang, initial_prompt="".join(self.prompts), vad_filter=self.vad)
+        audio = np.frombuffer(bytes(self.window), dtype=self.frame_dtype)
+        segments, info = self.model.transcribe(audio, language=self.lang, initial_prompt="".join(self.prompts), vad_filter=self.vad)
         segments = list(segments)
-        start = max(len(self.window) // self.sample_width / self.sample_rate - self.patience, 0.0)
+        start = max(len(self.window) // self.frame_dtype.itemsize / self.sample_rate - self.patience, 0.0)
         i = 0
         for segment in segments:
             if segment.end >= start:
@@ -71,7 +116,7 @@ class TranscriptionProcessor:
         done_src = "".join(segment.text for segment in segments[:i])
         curr_src = "".join(segment.text for segment in segments[i:])
         self.prompts.extend(segment.text for segment in segments[:i])
-        del self.window[: int(start * self.sample_rate) * self.sample_width]
+        del self.window[: int(start * self.sample_rate) * self.frame_dtype.itemsize]
         return Pair(done_src, curr_src)
 
 
@@ -122,7 +167,7 @@ class TranslationProcessor:
 class Processor:
     def __init__(
         self,
-        index: int | None,
+        id: str | None,
         model: str,
         device: str,
         vad: bool,
@@ -138,7 +183,7 @@ class Processor:
         on_ts_error: Callable[[Exception], None] = lambda _: None,
         on_tl_error: Callable[[Exception], None] = lambda _: None,
     ):
-        self.mic = sr.Microphone(index)
+        self.mic = SoundcardMicProcessor(mic_id=id)
         self.ts_proc = TranscriptionProcessor(
             model=model,
             device=device,
@@ -147,8 +192,8 @@ class Processor:
             prompts=prompts,
             memory=memory,
             patience=patience,
-            sample_rate=self.mic.SAMPLE_RATE,
-            sample_width=self.mic.SAMPLE_WIDTH,
+            sample_rate=self.mic.sample_rate,
+            frame_dtype=self.mic.frame_dtype,
         )
         self.tl_proc = TranslationProcessor(
             source=source,
@@ -214,7 +259,7 @@ class Processor:
 
 
 def start(
-    index: int | None,
+    id: str | None,
     model: str,
     device: str,
     vad: bool,
@@ -236,7 +281,7 @@ def start(
     def task():
         try:
             proc = Processor(
-                index=index,
+                id=id,
                 model=model,
                 device=device,
                 vad=vad,
