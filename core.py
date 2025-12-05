@@ -229,7 +229,7 @@ class Processor:
         try:
             with self.mic:
                 while self.is_running:
-                    self.frame_queue.put(Data(self.mic.stream.read(self.mic.CHUNK)))  # type: ignore
+                    self.frame_queue.put(Data(self.mic.read()))
         except Exception as err:
             self.on_cc_error(err)
         finally:
