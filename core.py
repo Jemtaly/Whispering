@@ -6,8 +6,10 @@ from typing import Callable, Self
 from urllib.parse import quote
 import requests
 
-import numpy as np
 import soundcard as sc
+import numpy as np
+import wave
+from io import BytesIO
 from faster_whisper import WhisperModel
 
 from que import ConflatingQueue, Pair, Data
@@ -78,6 +80,18 @@ class SoundcardMicProcessor:
         return np.dtype(np.float32)
 
 
+def bytes_to_wav(bytes: bytearray, frame_dtype: np.dtype, sample_rate: int) -> BytesIO:
+    audio = np.frombuffer(bytes, dtype=frame_dtype)
+    bio = BytesIO()
+    with wave.open(bio, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes((audio * 32768.0).astype(np.int16).tobytes())
+    bio.seek(0)
+    return bio
+
+
 class TranscriptionProcessor:
     def __init__(
         self,
@@ -102,7 +116,7 @@ class TranscriptionProcessor:
 
     def update(self, frame: Data) -> Pair:
         self.window.extend(frame)
-        audio = np.frombuffer(bytes(self.window), dtype=self.frame_dtype)
+        audio = bytes_to_wav(self.window, self.frame_dtype, self.sample_rate)
         segments, info = self.model.transcribe(audio, language=self.lang, initial_prompt="".join(self.prompts), vad_filter=self.vad)
         segments = list(segments)
         start = max(len(self.window) // self.frame_dtype.itemsize / self.sample_rate - self.patience, 0.0)
