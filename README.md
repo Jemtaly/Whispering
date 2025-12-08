@@ -1,14 +1,13 @@
 # Whispering
 
-Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) library and Google translation service.
+Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) module and Google translation service.
 
 ## Requirements
 
 - Python 3.8+
+- [Soundcard](https://pypi.org/project/SoundCard/)
 - [fast-whisper](https://github.com/SYSTRAN/faster-whisper)
-- [SpeechRecognition](https://pypi.org/project/SpeechRecognition)
-- [PyAudio](https://pypi.org/project/PyAudio) 0.2.11+
-- If you want to transcript from computer output, you can use virtual audio cable such as [VB-Audio Virtual Cable](https://vb-audio.com/Cable) or [Jack Audio Connection Kit](https://jackaudio.org), or use the `loopback` device in PulseAudio or ALSA.
+- [requests](https://pypi.org/project/requests/)
 
 ## Usage
 
