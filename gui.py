@@ -134,6 +134,7 @@ class App(tk.Tk):
                 timeout=float(self.timeout_spin.get()),
                 source=None if self.source_combo.get() == "auto" else self.source_combo.get(),
                 target=None if self.target_combo.get() == "none" else self.target_combo.get(),
+                sample_time=0.2,
                 tsres_queue=self.ts_text.res_queue,
                 tlres_queue=self.tl_text.res_queue,
                 on_failure=self.on_stopped,

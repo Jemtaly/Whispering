@@ -8,8 +8,6 @@ import requests
 
 import soundcard as sc
 import numpy as np
-import wave
-from io import BytesIO
 from faster_whisper import WhisperModel
 
 from que import ConflatingQueue, Pair, Data
@@ -52,14 +50,18 @@ class SoundcardMicProcessor:
     def __init__(
         self,
         mic_id: str | None = None,
-        sample_chunk: int = 1024,
+        *,
+        sample_type: np.dtype,
+        sample_rate: int,
+        sample_time: float,
     ):
         if mic_id is None:
             self.mic = sc.default_microphone()
         else:
             self.mic = sc.get_microphone(id=mic_id, include_loopback=True)
-        self.rec = self.mic.recorder(samplerate=16000, channels=self.mic.channels)
-        self.sample_chunk = sample_chunk
+        self.rec = self.mic.recorder(samplerate=sample_rate, channels=1)
+        self.sample_size = int(sample_rate * sample_time)
+        self.sample_type = sample_type
 
     def __enter__(self) -> None:
         self.rec.__enter__()
@@ -68,28 +70,8 @@ class SoundcardMicProcessor:
         self.rec.__exit__(exc_type, exc_value, traceback)
 
     def read(self) -> Data:
-        audio = self.rec.record(numframes=self.sample_chunk).mean(axis=1)
+        audio = self.rec.record(numframes=self.sample_size).squeeze(axis=1).astype(self.sample_type)
         return bytearray(audio.tobytes())
-
-    @property
-    def sample_rate(self) -> int:
-        return self.rec.samplerate
-
-    @property
-    def frame_dtype(self) -> np.dtype:
-        return np.dtype(np.float32)
-
-
-def bytes_to_wav(bytes: bytearray, frame_dtype: np.dtype, sample_rate: int) -> BytesIO:
-    audio = np.frombuffer(bytes, dtype=frame_dtype)
-    bio = BytesIO()
-    with wave.open(bio, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes((audio * 32768.0).astype(np.int16).tobytes())
-    bio.seek(0)
-    return bio
 
 
 class TranscriptionProcessor:
@@ -102,24 +84,22 @@ class TranscriptionProcessor:
         prompts: list[str],
         memory: int,
         patience: float,
-        sample_rate: int,
-        frame_dtype: np.dtype,
     ):
         self.model = WhisperModel(model, device)
+        self.sample_rate = 16000
+        self.sample_type = np.dtype(np.float32)
         self.vad = vad
         self.lang = lang
         self.prompts = deque(prompts, memory)
         self.window = Data()
         self.patience = patience
-        self.sample_rate = sample_rate
-        self.frame_dtype = frame_dtype
 
     def update(self, frame: Data) -> Pair:
         self.window.extend(frame)
-        audio = bytes_to_wav(self.window, self.frame_dtype, self.sample_rate)
+        audio = np.frombuffer(self.window, dtype=self.sample_type)
         segments, info = self.model.transcribe(audio, language=self.lang, initial_prompt="".join(self.prompts), vad_filter=self.vad)
         segments = list(segments)
-        start = max(len(self.window) // self.frame_dtype.itemsize / self.sample_rate - self.patience, 0.0)
+        start = max(len(self.window) // self.sample_type.itemsize / self.sample_rate - self.patience, 0.0)
         i = 0
         for segment in segments:
             if segment.end >= start:
@@ -130,7 +110,7 @@ class TranscriptionProcessor:
         done_src = "".join(segment.text for segment in segments[:i])
         curr_src = "".join(segment.text for segment in segments[i:])
         self.prompts.extend(segment.text for segment in segments[:i])
-        del self.window[: int(start * self.sample_rate) * self.frame_dtype.itemsize]
+        del self.window[: int(start * self.sample_rate) * self.sample_type.itemsize]
         return Pair(done_src, curr_src)
 
 
@@ -191,13 +171,13 @@ class Processor:
         timeout: float,
         source: str | None,
         target: str | None,
+        sample_time: float,
         tsres_queue: ConflatingQueue[Pair],
         tlres_queue: ConflatingQueue[Pair],
         on_cc_error: Callable[[Exception], None] = lambda _: None,
         on_ts_error: Callable[[Exception], None] = lambda _: None,
         on_tl_error: Callable[[Exception], None] = lambda _: None,
     ):
-        self.mic = SoundcardMicProcessor(mic_id=id)
         self.ts_proc = TranscriptionProcessor(
             model=model,
             device=device,
@@ -206,13 +186,17 @@ class Processor:
             prompts=prompts,
             memory=memory,
             patience=patience,
-            sample_rate=self.mic.sample_rate,
-            frame_dtype=self.mic.frame_dtype,
         )
         self.tl_proc = TranslationProcessor(
             source=source,
             target=target,
             timeout=timeout,
+        )
+        self.mic = SoundcardMicProcessor(
+            mic_id=id,
+            sample_type=self.ts_proc.sample_type,
+            sample_rate=self.ts_proc.sample_rate,
+            sample_time=sample_time,
         )
         self.is_running = False
         self.tsres_queue = tsres_queue
@@ -283,6 +267,7 @@ def start(
     timeout: float,
     source: str | None,
     target: str | None,
+    sample_time: float,
     tsres_queue: ConflatingQueue[Pair],
     tlres_queue: ConflatingQueue[Pair],
     on_failure: Callable[[Exception], None],
@@ -305,6 +290,7 @@ def start(
                 timeout=timeout,
                 source=source,
                 target=target,
+                sample_time=sample_time,
                 tsres_queue=tsres_queue,
                 tlres_queue=tlres_queue,
                 on_cc_error=on_cc_error,
