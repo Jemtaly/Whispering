@@ -3,35 +3,37 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar, Self, Protocol
 import threading
 
+import numpy as np
 
-class Extendable(Protocol):
-    def extend(self, other: Self, /) -> None:
+
+class Mergeable(Protocol):
+    def merge(self, other: Self, /) -> None:
         pass
 
 
-T = TypeVar("T", bound=Extendable)
+M = TypeVar("M", bound=Mergeable)
 
 
-class ConflatingQueue(Generic[T]):
+class MergingQueue(Generic[M]):
     def __init__(self):
-        self.deque = deque[T | None]()
+        self.deque = deque[M | None]()
         self.cond = threading.Condition()
 
     def __bool__(self):
         with self.cond:
             return bool(self.deque)
 
-    def put(self, item: T | None):
+    def put(self, item: M | None):
         with self.cond:
             if item is None:
                 self.deque.append(None)
             elif self.deque and (last := self.deque[-1]) is not None:
-                last.extend(item)
+                last.merge(item)
             else:
                 self.deque.append(item)
             self.cond.notify()
 
-    def get(self) -> T | None:
+    def get(self) -> M | None:
         with self.cond:
             while not self.deque:
                 self.cond.wait()
@@ -40,12 +42,17 @@ class ConflatingQueue(Generic[T]):
 
 @dataclass
 class Pair:
-    done: str
-    curr: str
+    cnfm: str  # confirmed part
+    drft: str  # draft part
 
-    def extend(self, other: Self):
-        self.done += other.done
-        self.curr = other.curr
+    def merge(self, other: Self):
+        self.cnfm += other.cnfm
+        self.drft = other.drft
 
 
-Data = bytearray
+@dataclass
+class Data:
+    data: np.ndarray  # 1D array of specific dtype
+
+    def merge(self, other: Self):
+        self.data = np.concatenate((self.data, other.data))

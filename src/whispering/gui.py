@@ -3,18 +3,22 @@
 import tkinter as tk
 import tkinter.ttk as ttk
 
-import core
-from que import ConflatingQueue, Pair
+from whispering.core.utils import MergingQueue, Pair
+from whispering.core.interfaces import LANGS
+from whispering.core.engine import Processor
+from whispering.services.audio.soundcard_impl import SoundcardMicFactory, SoundcardMicManager
+from whispering.services.transcription.whisper_impl import MODELS, DEVICES, WhisperTranscriptionFactory
+from whispering.services.translation.google_impl import GoogleTranslationFactory
 
 
 class Text(tk.Text):
     def __init__(self, master):
         super().__init__(master)
-        self.res_queue = ConflatingQueue[Pair]()
-        self.tag_config("done", foreground="black")
-        self.tag_config("curr", foreground="blue", underline=True)
-        self.insert("end", "  ", "done")
-        self.record = self.index("end-1c")
+        self.res_queue = MergingQueue[Pair]()
+        self.tag_config("cnfm", foreground="black")
+        self.tag_config("drft", foreground="blue", underline=True)
+        self.insert("end", "  ", "cnfm")
+        self.boundary = self.index("end-1c")
         self.see("end")
         self.config(state="disabled")
         self.update()
@@ -23,19 +27,19 @@ class Text(tk.Text):
         while self.res_queue:
             self.config(state="normal")
             if res := self.res_queue.get():
-                done = res.done
-                curr = res.curr
-                self.delete(self.record, "end")
-                self.insert("end", done, "done")
-                self.record = self.index("end-1c")
-                self.insert("end", curr, "curr")
+                cnfm = res.cnfm
+                drft = res.drft
+                self.delete(self.boundary, "end")
+                self.insert("end", cnfm, "cnfm")
+                self.boundary = self.index("end-1c")
+                self.insert("end", drft, "drft")
             else:
-                done = self.get(self.record, "end-1c")
-                self.delete(self.record, "end")
-                self.insert("end", done, "done")
-                self.insert("end", "\n", "done")
-                self.insert("end", "  ", "done")
-                self.record = self.index("end-1c")
+                cnfm = self.get(self.boundary, "end-1c")
+                self.delete(self.boundary, "end")
+                self.insert("end", cnfm, "cnfm")
+                self.insert("end", "\n", "cnfm")
+                self.insert("end", "  ", "cnfm")
+                self.boundary = self.index("end-1c")
             self.see("end")
             self.config(state="disabled")
         self.after(100, self.update)  # avoid busy waiting
@@ -56,16 +60,16 @@ class App(tk.Tk):
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
-        self.mic_manager = core.SoundcardMicManager()
+        self.mic_manager = SoundcardMicManager()
         self.mic_label = ttk.Label(self.top_frame, text="Mic:")
         self.mic_combo = ttk.Combobox(self.top_frame, values=self.mic_manager.list_microphones(), state="readonly")
         self.mic_combo.current(0)
         self.mic_button = ttk.Button(self.top_frame, text="Refresh", command=lambda: self.mic_combo.config(values=self.mic_manager.refresh().list_microphones()))
         self.model_label = ttk.Label(self.top_frame, text="Model size or path:")
-        self.model_combo = ttk.Combobox(self.top_frame, values=core.MODELS, state="normal")
+        self.model_combo = ttk.Combobox(self.top_frame, values=MODELS, state="normal")
         self.model_combo.set("")
         self.device_label = ttk.Label(self.top_frame, text="Device:")
-        self.device_combo = ttk.Combobox(self.top_frame, values=core.DEVICES, state="readonly")
+        self.device_combo = ttk.Combobox(self.top_frame, values=DEVICES, state="readonly")
         self.device_combo.current(0)
         self.vad_check = ttk.Checkbutton(self.top_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
@@ -93,10 +97,10 @@ class App(tk.Tk):
         self.timeout_label.pack(side="left", padx=(5, 5))
         self.timeout_spin.pack(side="left", padx=(0, 5))
         self.source_label = ttk.Label(self.bot_frame, text="Source:")
-        self.source_combo = ttk.Combobox(self.bot_frame, values=["auto"] + core.LANGS, state="readonly")
+        self.source_combo = ttk.Combobox(self.bot_frame, values=["auto"] + LANGS, state="readonly")
         self.source_combo.current(0)
         self.target_label = ttk.Label(self.bot_frame, text="Target:")
-        self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + core.LANGS, state="readonly")
+        self.target_combo = ttk.Combobox(self.bot_frame, values=["none"] + LANGS, state="readonly")
         self.target_combo.current(0)
         self.prompt_label = ttk.Label(self.bot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.bot_frame, state="normal")
@@ -110,7 +114,7 @@ class App(tk.Tk):
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
         self.control_button.pack(side="left", padx=(5, 5))
 
-    def on_started(self, proc: core.Processor):
+    def on_started(self, proc: Processor):
         def stop():
             self.control_button.config(text="Stopping...", state="disabled")
             proc.stop()
@@ -123,18 +127,27 @@ class App(tk.Tk):
 
         def start():
             self.control_button.config(text="Starting...", state="disabled")
-            core.start(
-                id=self.mic_manager.get_microphone_by_index(self.mic_combo.current()),
-                model=self.model_combo.get(),
-                device=self.device_combo.get(),
+            mic_factory = SoundcardMicFactory(
+                mic_id=self.mic_manager.get_microphone_by_index(self.mic_combo.current()),
+            )
+            ts_factory = WhisperTranscriptionFactory(
+                model=self.model_combo.get(),  # type: ignore
+                device=self.device_combo.get(),  # type: ignore
                 vad=self.vad_check.instate(("selected",)),
                 prompts=[self.prompt_entry.get()],
                 memory=int(self.memory_spin.get()),
                 patience=float(self.patience_spin.get()),
+            )
+            tl_factory = GoogleTranslationFactory(
                 timeout=float(self.timeout_spin.get()),
-                source=None if self.source_combo.get() == "auto" else self.source_combo.get(),
-                target=None if self.target_combo.get() == "none" else self.target_combo.get(),
-                sample_time=0.2,
+            )
+            Processor.start(
+                mic_factory=mic_factory,
+                sample_time=0.1,
+                ts_factory=ts_factory,
+                tl_factory=tl_factory,
+                source_lang=None if self.source_combo.get() == "auto" else self.source_combo.get(),  # type: ignore
+                target_lang=None if self.target_combo.get() == "none" else self.target_combo.get(),  # type: ignore
                 tsres_queue=self.ts_text.res_queue,
                 tlres_queue=self.tl_text.res_queue,
                 on_failure=self.on_stopped,
@@ -148,5 +161,5 @@ class App(tk.Tk):
         self.control_button.config(text="Start", command=start, state="normal")
 
 
-if __name__ == "__main__":
+def main() -> None:
     App().mainloop()

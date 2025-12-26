@@ -4,14 +4,38 @@ Transcribe and translate speech from a microphone or computer output in real-tim
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.11+
 - [Soundcard](https://pypi.org/project/SoundCard/)
 - [fast-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [requests](https://pypi.org/project/requests/)
 
+## Installation
+
+This repo uses a standard `src/` layout and is installable via `pyproject.toml`.
+
+```bash
+pip install .
+```
+
+If you want editable installs for development:
+
+```bash
+pip install -e .
+```
+
 ## Usage
 
-Simply run the `gui.py` script to start the GUI version of the program.
+After installation, start the GUI with either:
+
+```bash
+whispering
+```
+
+or:
+
+```bash
+python -m whispering
+```
 
 ![Screenshot](https://github.com/Jemtaly/Whispering/assets/83796250/c68fcd61-752f-4c16-9c13-231ac4b0d2fc)
 
@@ -39,4 +63,4 @@ Simply run the `gui.py` script to start the GUI version of the program.
 
 - About scalability
 
-  The core logic of the program is in `core.py`, where the logic of transcription and translation is clearly separated, so you can extend or modify it as needed. For example, you can replace the translation service with other translation services.
+  The core logic of the program is under the `whispering` package (see `src/whispering/`). Transcription and translation are separated, so you can extend or modify them as needed. For example, you can replace the translation service with other translation services.
