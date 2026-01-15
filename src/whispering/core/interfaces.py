@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 
@@ -32,19 +31,7 @@ class RecordingServiceFactory(ABC):
         pass
 
 
-Language = Literal[
-    "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo",
-    "br", "bs", "ca", "cs", "cy", "da", "de", "el", "en", "es",
-    "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw",
-    "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja",
-    "jw", "ka", "kk", "km", "kn", "ko", "la", "lb", "ln", "lo",
-    "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt",
-    "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt",
-    "ro", "ru", "sa", "sd", "si", "sk", "sl", "sn", "so", "sq",
-    "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl",
-    "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
-]
-LANGS = list(Language.__args__)
+LanguageCode = str
 
 
 class TranscriptionService(ABC):
@@ -67,7 +54,7 @@ class TranscriptionServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
-        lang: Language | None,
+        lang: LanguageCode | None,
     ) -> TranscriptionService:
         pass
 
@@ -82,8 +69,8 @@ class TranslationServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
-        source_lang: Language | None,
-        target_lang: Language | None,
+        source_lang: LanguageCode | None,
+        target_lang: LanguageCode | None,
     ) -> TranslationService:
         pass
 

@@ -2,20 +2,26 @@ import tkinter as tk
 import tkinter.ttk as ttk
 
 from whispering.core.utils import MergingQueue, Pair
-from whispering.core.interfaces import LANGS
 from whispering.core.engine import STTEngine
 from whispering.services.audio.soundcard_impl import (
     SoundcardMicrophoneInfo,
     SoundcardRecordingServiceFactory,
 )
 from whispering.services.transcription.whisper_impl import (
-    MODELS,
-    DEVICES,
+    WHISPER_MODEL_NAMES,
+    WHISPER_DEVICE_NAMES,
+    WHISPER_LANGUAGE_CODES,
     WhisperTranscriptionFactory,
 )
 from whispering.services.translation.google_impl import (
+    GOOGLE_SOURCE_LANGUAGE_CODES,
+    GOOGLE_TARGET_LANGUAGE_CODES,
     GoogleTranslationServiceFactory,
 )
+
+
+SOURCE_LANGUAGE_CODES = sorted(GOOGLE_SOURCE_LANGUAGE_CODES & WHISPER_LANGUAGE_CODES)
+TARGET_LANGUAGE_CODES = sorted(GOOGLE_TARGET_LANGUAGE_CODES)
 
 
 class Text(tk.Text):
@@ -71,10 +77,10 @@ class App(tk.Tk):
         self.mic_combo_refresh()
         self.mic_button = ttk.Button(self.head_frame, text="Refresh", command=self.mic_combo_refresh)
         self.model_label = ttk.Label(self.head_frame, text="Model size or path:")
-        self.model_combo = ttk.Combobox(self.head_frame, values=MODELS, state="normal")
+        self.model_combo = ttk.Combobox(self.head_frame, values=WHISPER_MODEL_NAMES, state="normal")
         self.model_combo.set("")
         self.device_label = ttk.Label(self.head_frame, text="Device:")
-        self.device_combo = ttk.Combobox(self.head_frame, values=DEVICES, state="readonly")
+        self.device_combo = ttk.Combobox(self.head_frame, values=WHISPER_DEVICE_NAMES, state="readonly")
         self.device_combo.current(0)
         self.vad_check = ttk.Checkbutton(self.head_frame, text="VAD", onvalue=True, offvalue=False)
         self.vad_check.state(("!alternate", "selected"))
@@ -102,10 +108,10 @@ class App(tk.Tk):
         self.timeout_label.pack(side="left", padx=(5, 5))
         self.timeout_spin.pack(side="left", padx=(0, 5))
         self.source_label = ttk.Label(self.foot_frame, text="Source:")
-        self.source_combo = ttk.Combobox(self.foot_frame, values=["auto"] + LANGS, state="readonly")
+        self.source_combo = ttk.Combobox(self.foot_frame, values=["auto"] + SOURCE_LANGUAGE_CODES, state="readonly")
         self.source_combo.current(0)
         self.target_label = ttk.Label(self.foot_frame, text="Target:")
-        self.target_combo = ttk.Combobox(self.foot_frame, values=["none"] + LANGS, state="readonly")
+        self.target_combo = ttk.Combobox(self.foot_frame, values=["none"] + TARGET_LANGUAGE_CODES, state="readonly")
         self.target_combo.current(0)
         self.prompt_label = ttk.Label(self.foot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.foot_frame, state="normal")

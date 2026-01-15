@@ -6,7 +6,7 @@ from whispering.core.interfaces import (
     RecordingServiceFactory,
     TranscriptionServiceFactory,
     TranslationServiceFactory,
-    Language,
+    LanguageCode,
 )
 
 
@@ -17,8 +17,8 @@ class STTEngine:
         sample_time: float,
         transc_factory: TranscriptionServiceFactory,
         transl_factory: TranslationServiceFactory,
-        source_lang: Language | None,
-        target_lang: Language | None,
+        source_lang: LanguageCode | None,
+        target_lang: LanguageCode | None,
         transc_result_queue: MergingQueue[Pair],
         transl_result_queue: MergingQueue[Pair],
         on_stopped: "Callable[[], None]",
@@ -54,8 +54,8 @@ class STTEngine:
         sample_time: float,
         transc_factory: TranscriptionServiceFactory,
         transl_factory: TranslationServiceFactory,
-        source_lang: Language | None,
-        target_lang: Language | None,
+        source_lang: LanguageCode | None,  # None means auto detection
+        target_lang: LanguageCode | None,  # None means no translation
         transc_result_queue: MergingQueue[Pair],
         transl_result_queue: MergingQueue[Pair],
         on_failure: "Callable[[Exception], None]",
