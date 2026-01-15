@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import dataclass
 from typing import Generic, TypeVar, Self, Protocol
-import threading
+from threading import Condition
 
 import numpy as np
 
@@ -17,7 +17,7 @@ M = TypeVar("M", bound=Mergeable)
 class MergingQueue(Generic[M]):
     def __init__(self):
         self.deque = deque[M | None]()
-        self.cond = threading.Condition()
+        self.cond = Condition()
 
     def __bool__(self):
         with self.cond:

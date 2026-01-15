@@ -6,14 +6,20 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 from whispering.core.utils import Data, Pair
-from whispering.core.interfaces import TranscriptionFactory, TranscriptionProcessor, Language
+from whispering.core.interfaces import (
+    TranscriptionServiceFactory,
+    TranscriptionService,
+    Language,
+)
 
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 
-Model = Literal["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"]
+Model = Literal[
+    "tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3", "large"
+]
 Device = Literal["auto", "cpu", "cuda"]
 MODELS = list(Model.__args__)
 DEVICES = list(Device.__args__)
@@ -24,7 +30,7 @@ def get_model(model: Model, device: Device) -> WhisperModel:
     return WhisperModel(model, device)
 
 
-class WhisperTranscriptionProcessor(TranscriptionProcessor):
+class WhisperTranscriptionService(TranscriptionService):
     def __init__(
         self,
         model: Model,
@@ -70,13 +76,13 @@ class WhisperTranscriptionProcessor(TranscriptionProcessor):
     @property
     def required_sample_type(self) -> np.dtype:
         return self.sample_type
-    
+
     @property
     def required_sample_rate(self) -> int:
         return self.sample_rate
 
 
-class WhisperTranscriptionFactory(TranscriptionFactory):
+class WhisperTranscriptionFactory(TranscriptionServiceFactory):
     def __init__(
         self,
         model: Model,
@@ -96,8 +102,8 @@ class WhisperTranscriptionFactory(TranscriptionFactory):
     def create(
         self,
         lang: Language | None,
-    ) -> TranscriptionProcessor:
-        return WhisperTranscriptionProcessor(
+    ) -> TranscriptionService:
+        return WhisperTranscriptionService(
             model=self.model,
             device=self.device,
             vad=self.vad,

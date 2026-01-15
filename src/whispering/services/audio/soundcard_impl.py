@@ -1,48 +1,59 @@
+from dataclasses import dataclass
+
 import numpy as np
-from soundcard import all_microphones, get_microphone, default_microphone
+from soundcard import (
+    all_microphones,
+    get_microphone,
+    default_microphone,
+)
 
 from whispering.core.utils import Data
-from whispering.core.interfaces import MicProcessor, MicFactory
+from whispering.core.interfaces import (
+    RecordingService,
+    RecordingServiceFactory,
+)
 
 
-class SoundcardMicManager:
-    def __init__(self):
-        self.microphones = [None, *all_microphones(include_loopback=True)]
+@dataclass
+class SoundcardMicrophoneInfo:
+    id: str | None
+    kind: str
+    name: str
 
-    def refresh(self):
-        self.microphones = [None, *all_microphones(include_loopback=True)]
-        return self
+    @staticmethod
+    def list_microphones():
+        mic_info = SoundcardMicrophoneInfo(
+            id=None,
+            kind="default",
+            name="Default Microphone",
+        )
+        mic_infos = [mic_info]
+        for mic in all_microphones(include_loopback=True):
+            mic_info = SoundcardMicrophoneInfo(
+                id=mic.id,
+                kind="loopback" if mic.isloopback else "microphone",
+                name=mic.name,
+            )
+            mic_infos.append(mic_info)
+        return mic_infos
 
-    def list_microphones(self) -> list[str]:
-        result = []
-        for mic in self.microphones:
-            if mic is None:
-                kind = "default"
-                name = "Default Microphone"
-            else:
-                kind = "loopback" if mic.isloopback else "microphone"
-                name = mic.name
-            result.append(f"[{kind}] {name}")
-        return result
-
-    def get_microphone_by_index(self, index: int) -> str | None:
-        mic = self.microphones[index]
-        return mic.id if mic is not None else None
+    def get(self):
+        if self.id is None:
+            return default_microphone()
+        else:
+            return get_microphone(id=self.id, include_loopback=True)
 
 
-class SoundcardMicProcessor(MicProcessor):
+class SoundcardRecordingService(RecordingService):
     def __init__(
         self,
-        mic_id: str | None = None,
+        mic_info: SoundcardMicrophoneInfo,
         *,
         sample_type: np.dtype,
         sample_rate: int,
         sample_time: float,
     ):
-        if mic_id is None:
-            self.mic = default_microphone()
-        else:
-            self.mic = get_microphone(id=mic_id, include_loopback=True)
+        self.mic = mic_info.get()
         self.rec = self.mic.recorder(samplerate=sample_rate, channels=1)
         self.sample_size = int(sample_rate * sample_time)
         self.sample_type = sample_type
@@ -50,28 +61,33 @@ class SoundcardMicProcessor(MicProcessor):
     def __enter__(self) -> None:
         self.rec.__enter__()
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.rec.__exit__(exc_type, exc_value, traceback)
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.rec.__exit__(exc_type, exc_val, exc_tb)
 
     def read(self) -> Data:
-        return Data(self.rec.record(numframes=self.sample_size).squeeze(axis=1).astype(self.sample_type))
+        return Data(
+            self.rec
+            .record(numframes=self.sample_size)
+            .squeeze(axis=1)
+            .astype(self.sample_type)
+        )
 
 
-class SoundcardMicFactory(MicFactory):
+class SoundcardRecordingServiceFactory(RecordingServiceFactory):
     def __init__(
         self,
-        mic_id: str | None = None,
+        mic_info: SoundcardMicrophoneInfo,
     ):
-        self.mic_id = mic_id
+        self.mic_info = mic_info
 
     def create(
         self,
         sample_type: np.dtype,
         sample_rate: int,
         sample_time: float,
-    ) -> MicProcessor:
-        return SoundcardMicProcessor(
-            self.mic_id,
+    ) -> RecordingService:
+        return SoundcardRecordingService(
+            self.mic_info,
             sample_type=sample_type,
             sample_rate=sample_rate,
             sample_time=sample_time,

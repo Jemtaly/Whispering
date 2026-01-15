@@ -2,85 +2,90 @@ from threading import Thread
 from typing import Callable
 
 from whispering.core.utils import MergingQueue, Pair, Data
-from whispering.core.interfaces import MicFactory, TranscriptionFactory, TranslationFactory, Language
+from whispering.core.interfaces import (
+    RecordingServiceFactory,
+    TranscriptionServiceFactory,
+    TranslationServiceFactory,
+    Language,
+)
 
 
-class Processor:
+class STTEngine:
     def __init__(
         self,
-        mic_factory: MicFactory,
+        record_factory: RecordingServiceFactory,
         sample_time: float,
-        ts_factory: TranscriptionFactory,
-        tl_factory: TranslationFactory,
+        transc_factory: TranscriptionServiceFactory,
+        transl_factory: TranslationServiceFactory,
         source_lang: Language | None,
         target_lang: Language | None,
-        tsres_queue: MergingQueue[Pair],
-        tlres_queue: MergingQueue[Pair],
+        transc_result_queue: MergingQueue[Pair],
+        transl_result_queue: MergingQueue[Pair],
         on_stopped: "Callable[[], None]",
-        on_cc_error: "Callable[[Exception], None]" = lambda _: None,
-        on_ts_error: "Callable[[Exception], None]" = lambda _: None,
-        on_tl_error: "Callable[[Exception], None]" = lambda _: None,
+        on_record_error: "Callable[[Exception], None]" = lambda _: None,
+        on_transc_error: "Callable[[Exception], None]" = lambda _: None,
+        on_transl_error: "Callable[[Exception], None]" = lambda _: None,
     ):
-        self.ts_proc = ts_factory.create(
+        self.transc_service = transc_factory.create(
             lang=source_lang,
         )
-        self.tl_proc = tl_factory.create(
+        self.transl_service = transl_factory.create(
             source_lang=source_lang,
             target_lang=target_lang,
         )
-        self.mic = mic_factory.create(
-            sample_type=self.ts_proc.required_sample_type,
-            sample_rate=self.ts_proc.required_sample_rate,
+        self.record_service = record_factory.create(
+            sample_type=self.transc_service.required_sample_type,
+            sample_rate=self.transc_service.required_sample_rate,
             sample_time=sample_time,
         )
         self.is_running = False
-        self.tsres_queue = tsres_queue
-        self.tlres_queue = tlres_queue
-        self.frame_queue = MergingQueue[Data]()
-        self.ts2tl_queue = MergingQueue[Pair]()
+        self.transc_result_queue = transc_result_queue
+        self.transl_result_queue = transl_result_queue
+        self.record_result_queue = MergingQueue[Data]()
+        self.transc2transl_queue = MergingQueue[Pair]()
         self.on_stopped = on_stopped
-        self.on_cc_error = on_cc_error
-        self.on_ts_error = on_ts_error
-        self.on_tl_error = on_tl_error
+        self.on_record_error = on_record_error
+        self.on_transc_error = on_transc_error
+        self.on_transl_error = on_transl_error
 
     @staticmethod
     def start(
-        mic_factory: MicFactory,
+        record_factory: RecordingServiceFactory,
         sample_time: float,
-        ts_factory: TranscriptionFactory,
-        tl_factory: TranslationFactory,
+        transc_factory: TranscriptionServiceFactory,
+        transl_factory: TranslationServiceFactory,
         source_lang: Language | None,
         target_lang: Language | None,
-        tsres_queue: MergingQueue[Pair],
-        tlres_queue: MergingQueue[Pair],
+        transc_result_queue: MergingQueue[Pair],
+        transl_result_queue: MergingQueue[Pair],
         on_failure: "Callable[[Exception], None]",
-        on_success: "Callable[[Processor], None]",
+        on_success: "Callable[[STTEngine], None]",
         on_stopped: "Callable[[], None]",
-        on_cc_error: "Callable[[Exception], None]" = lambda _: None,
-        on_ts_error: "Callable[[Exception], None]" = lambda _: None,
-        on_tl_error: "Callable[[Exception], None]" = lambda _: None,
+        on_record_error: "Callable[[Exception], None]" = lambda _: None,
+        on_transc_error: "Callable[[Exception], None]" = lambda _: None,
+        on_transl_error: "Callable[[Exception], None]" = lambda _: None,
     ):
         def task():
             try:
-                proc = Processor(
-                    mic_factory=mic_factory,
+                eng = STTEngine(
+                    record_factory=record_factory,
                     sample_time=sample_time,
-                    ts_factory=ts_factory,
-                    tl_factory=tl_factory,
+                    transc_factory=transc_factory,
+                    transl_factory=transl_factory,
                     source_lang=source_lang,
                     target_lang=target_lang,
-                    tsres_queue=tsres_queue,
-                    tlres_queue=tlres_queue,
+                    transc_result_queue=transc_result_queue,
+                    transl_result_queue=transl_result_queue,
                     on_stopped=on_stopped,
-                    on_cc_error=on_cc_error,
-                    on_ts_error=on_ts_error,
-                    on_tl_error=on_tl_error,
+                    on_record_error=on_record_error,
+                    on_transc_error=on_transc_error,
+                    on_transl_error=on_transl_error,
                 )
             except Exception as err:
                 on_failure(err)
             else:
-                on_success(proc)
-                proc._run()
+                on_success(eng)
+                eng._run()
 
         Thread(target=task, daemon=True).start()
 
@@ -89,45 +94,45 @@ class Processor:
 
     def _run(self):
         self.is_running = True
-        cc_thread = Thread(target=self._cc_task)
-        ts_thread = Thread(target=self._ts_task)
-        tl_thread = Thread(target=self._tl_task)
-        cc_thread.start()
-        ts_thread.start()
-        tl_thread.start()
-        cc_thread.join()
-        ts_thread.join()
-        tl_thread.join()
+        record_thread = Thread(target=self._record_task)
+        transc_thread = Thread(target=self._transc_task)
+        transl_thread = Thread(target=self._transl_task)
+        record_thread.start()
+        transc_thread.start()
+        transl_thread.start()
+        record_thread.join()
+        transc_thread.join()
+        transl_thread.join()
         self.on_stopped()
 
-    def _cc_task(self):
+    def _record_task(self):
         try:
-            with self.mic:
+            with self.record_service:
                 while self.is_running:
-                    self.frame_queue.put(self.mic.read())
+                    self.record_result_queue.put(self.record_service.read())
         except Exception as err:
-            self.on_cc_error(err)
+            self.on_record_error(err)
         finally:
-            self.frame_queue.put(None)
+            self.record_result_queue.put(None)
 
-    def _ts_task(self):
+    def _transc_task(self):
         try:
-            while frame := self.frame_queue.get():
-                src = self.ts_proc.update(frame)
-                self.ts2tl_queue.put(src)
-                self.tsres_queue.put(src)
+            while frame := self.record_result_queue.get():
+                src = self.transc_service.update(frame)
+                self.transc2transl_queue.put(src)
+                self.transc_result_queue.put(src)
         except Exception as err:
-            self.on_ts_error(err)
+            self.on_transc_error(err)
         finally:
-            self.ts2tl_queue.put(None)
-            self.tsres_queue.put(None)
+            self.transc2transl_queue.put(None)
+            self.transc_result_queue.put(None)
 
-    def _tl_task(self):
+    def _transl_task(self):
         try:
-            while ts2tl := self.ts2tl_queue.get():
-                tgt = self.tl_proc.update(ts2tl)
-                self.tlres_queue.put(tgt)
+            while src := self.transc2transl_queue.get():
+                tgt = self.transl_service.update(src)
+                self.transl_result_queue.put(tgt)
         except Exception as err:
-            self.on_tl_error(err)
+            self.on_transl_error(err)
         finally:
-            self.tlres_queue.put(None)
+            self.transl_result_queue.put(None)

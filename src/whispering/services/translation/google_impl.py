@@ -1,10 +1,16 @@
 from urllib.parse import quote
 import requests
 
-from whispering.core.interfaces import TranslationProcessor, TranslationFactory, AutoTranslationProcessor, TranslationResult, Language
+from whispering.core.interfaces import (
+    TranslationService,
+    TranslationServiceFactory,
+    CoreTranslationService,
+    TranslationResult,
+    Language,
+)
 
 
-class GoogleTranslationProcessor(AutoTranslationProcessor):
+class GoogleTranslationService(CoreTranslationService):
     def __init__(
         self,
         source_lang: Language | None,
@@ -31,7 +37,7 @@ class GoogleTranslationProcessor(AutoTranslationProcessor):
             return [TranslationResult(text, "Translation service is unavailable.")]
 
 
-class GoogleTranslationFactory(TranslationFactory):
+class GoogleTranslationServiceFactory(TranslationServiceFactory):
     def __init__(
         self,
         timeout: float,
@@ -42,8 +48,8 @@ class GoogleTranslationFactory(TranslationFactory):
         self,
         source_lang: Language | None,
         target_lang: Language | None,
-    ) -> TranslationProcessor:
-        return GoogleTranslationProcessor(
+    ) -> TranslationService:
+        return GoogleTranslationService(
             source_lang=source_lang,
             target_lang=target_lang,
             timeout=self.timeout,

@@ -7,13 +7,13 @@ import numpy as np
 from whispering.core.utils import Pair, Data
 
 
-class MicProcessor(ABC):
+class RecordingService(ABC):
     @abstractmethod
     def __enter__(self) -> None:
         pass
 
     @abstractmethod
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         pass
 
     @abstractmethod
@@ -21,14 +21,14 @@ class MicProcessor(ABC):
         pass
 
 
-class MicFactory(ABC):
+class RecordingServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
         sample_type: np.dtype,
         sample_rate: int,
         sample_time: float,
-    ) -> MicProcessor:
+    ) -> RecordingService:
         pass
 
 
@@ -47,7 +47,7 @@ Language = Literal[
 LANGS = list(Language.__args__)
 
 
-class TranscriptionProcessor(ABC):
+class TranscriptionService(ABC):
     @abstractmethod
     def update(self, frame: Data) -> Pair:
         pass
@@ -63,28 +63,28 @@ class TranscriptionProcessor(ABC):
         pass
 
 
-class TranscriptionFactory(ABC):
+class TranscriptionServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
         lang: Language | None,
-    ) -> TranscriptionProcessor:
+    ) -> TranscriptionService:
         pass
 
 
-class TranslationProcessor(ABC):
+class TranslationService(ABC):
     @abstractmethod
     def update(self, src: Pair) -> Pair:
         pass
 
 
-class TranslationFactory(ABC):
+class TranslationServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
         source_lang: Language | None,
         target_lang: Language | None,
-    ) -> TranslationProcessor:
+    ) -> TranslationService:
         pass
 
 
@@ -94,7 +94,7 @@ class TranslationResult:
     target: str
 
 
-class AutoTranslationProcessor(TranslationProcessor):
+class CoreTranslationService(TranslationService):
     def __init__(self):
         self.src = ""
 
