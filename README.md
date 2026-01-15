@@ -5,9 +5,6 @@ Transcribe and translate speech from a microphone or computer output in real-tim
 ## Requirements
 
 - Python 3.11+
-- [Soundcard](https://pypi.org/project/SoundCard/)
-- [fast-whisper](https://github.com/SYSTRAN/faster-whisper)
-- [requests](https://pypi.org/project/requests/)
 
 ## Installation
 
@@ -15,12 +12,6 @@ This repo uses a standard `src/` layout and is installable via `pyproject.toml`.
 
 ```bash
 pip install .
-```
-
-If you want editable installs for development:
-
-```bash
-pip install -e .
 ```
 
 ## Usage
