@@ -1,6 +1,6 @@
 # Whispering
 
-Transcribe and translate speech from a microphone or computer output in real-time, based on the [fast-whisper](https://github.com/SYSTRAN/faster-whisper) module and Google translation service.
+Transcribe and translate speech from a microphone or computer output in real-time, based on the [faster-whisper](https://github.com/SYSTRAN/faster-whisper) module and Google translation service.
 
 ## Requirements
 
@@ -30,28 +30,105 @@ python -m whispering
 
 ![Screenshot](https://github.com/Jemtaly/Whispering/assets/83796250/c68fcd61-752f-4c16-9c13-231ac4b0d2fc)
 
-## Q&A
+### GUI Settings
 
-- How does the program work?
+| Option | Description |
+| ------ | ----------- |
+| **Mic** | Audio input device selection |
+| **Model size or path** | Whisper model to use |
+| **Device** | Computing device for inference |
+| **VAD** | Enable Voice Activity Detection to filter out silence |
+| **Memory** | Number of previous confirmed segments to use as prompts for context |
+| **Patience** | Minimum time (seconds) to wait after a segment ends before confirming it |
+| **Timeout** | HTTP timeout (seconds) for translation requests |
+| **Source** | Source language for transcription (`auto` for automatic detection) |
+| **Target** | Target language for translation (`none` to disable translation) |
+| **Prompt** | Initial prompt text to guide transcription style/vocabulary |
 
-  When the program starts working, it will take the audio stream in real time from the input device (microphone or computer output) and transcribe it. After a piece of audio is transcribed, the corresponding text fragment will be obtained and output to the screen immediately. In order to avoid inaccurate transcription results due to lack of context or speech being cut off in the middle, the program will temporarily place the segments that have been transcribed but have not yet been fully confirmed in a "transcription window" (displayed as underlined blue text in the GUI app). When the next piece of audio comes, it will be concatenated to the window. The audio in the window is transcribed iteratively, and the transcription results are constantly revised and updated until a sentence is completed and has sufficient subsequent context (determined by the `patience` parameter) before it is moved out of the transcription window (turns into black text). The last few moved-out segments (the number is determined by the `memory` parameter) will be used as prompts for subsequent context to improve the accuracy of transcription.
+### Display
 
-  At the same time, the real-time transcription text fragments will be sent to the Google translation service for translation, and the translation results will also be output to the screen in real time. Users can specify the source language and target language by setting the `source` and `target` parameters. If the source language is not specified, the program will automatically detect the source language. If the target language is not specified, no translation will be performed.
+- **Left panel**: Displays transcription results
+- **Right panel**: Displays translation results
+- **Black text**: Confirmed, finalized text
+- **Blue underlined text**: Draft text still being refined in the transcription window
 
-- What is the effect of the `patience` and `memory` parameters on the program?
+## Architecture
 
-  The `patience` parameter determines the minimum time to wait for subsequent speech before moving a completed segment out of the transcription window. If the `patience` parameter is set too low, the program may move the segment out of the window too early, resulting in incomplete sentences or inaccurate transcription. If the `patience` parameter is set too high, the program may wait too long to move the segment out of the window, this will cause the transcription window to accumulate too much content, which may result in slower transcription speed.
+The project follows a clean, modular architecture with clear separation of concerns:
 
-  The `memory` parameter determines the maximum number of previous segments to be used as prompts for audio in the transcription window. If the `memory` parameter is set too low, the program may not have enough previous context used as prompts, which may result in inaccurate transcription. If the `memory` parameter is set too high, the prompts could be too long, which also could slow down the transcription speed.
+```
+whispering/
+├── core/                      # Core abstractions and engine
+│   ├── interfaces.py          # Abstract interfaces for all services
+│   ├── engine.py              # STTEngine - orchestrates the pipeline
+│   └── utils.py               # Shared utilities (MergingQueue, Pair, Data)
+├── services/                  # Pluggable service implementations
+│   ├── audio/
+│   │   └── soundcard_impl.py  # Audio recording via soundcard
+│   ├── transcription/
+│   │   └── whisper_impl.py    # Transcription via faster-whisper
+│   └── translation/
+│       └── google_impl.py     # Translation via Google Translate
+└── gui.py                     # Tkinter-based GUI application
+```
 
-- What are the advantages of Whispering compared to other speech recognition programs based on Whisper?
+### Core Components
 
-  Since the program iteratively transcribes the audio in real time and can automatically divide the sentence at the appropriate position to move it out of the transcription window, Whispering can ensure the accuracy of recognition while minimizing the delay caused by the accumulation of audio. In addition, Whispering also supports real-time translation, allowing users to obtain translation results while transcribing, which is very useful in scenarios that require multilingual support.
+- **Interfaces** (`core/interfaces.py`): Defines abstract base classes for `RecordingService`, `TranscriptionService`, and `TranslationService`, enabling easy extension with custom implementations.
 
-- Does it need to be connected to the Internet?
+- **STTEngine** (`core/engine.py`): The central orchestrator that manages three parallel threads:
+  - **Record thread**: Captures audio frames from the input device
+  - **Transcription thread**: Processes audio frames and produces transcription pairs (confirmed + draft text)
+  - **Translation thread**: Translates transcription results in real-time
 
-  If you only need the real-time transcription function, then it does not need to be connected to the Internet. In this case, you only need to set the target language for translation to `none`. However, if you need the translation function, then an Internet connection is necessary. Because in the current implementation, the translation function is implemented by calling Google's translation service.
+### Service Implementations
 
-- About scalability
+- **SoundcardRecordingService**: Records audio using the `soundcard` library, supporting both microphones and loopback (system audio capture).
 
-  The core logic of the program is under the `whispering` package (see `src/whispering/`). Transcription and translation are separated, so you can extend or modify them as needed. For example, you can replace the translation service with other translation services.
+- **WhisperTranscriptionService**: Uses faster-whisper for transcription with a sliding window approach. Maintains a "transcription window" that accumulates audio until segments are confirmed based on the patience parameter.
+
+- **GoogleTranslationService**: Translates text using Google's translation API with configurable timeout.
+
+### Extensibility
+
+The modular architecture makes it easy to add custom implementations:
+
+1. **Custom Recording Service**: Implement `RecordingService` and `RecordingServiceFactory` interfaces
+2. **Custom Transcription Service**: Implement `TranscriptionService` and `TranscriptionServiceFactory` interfaces
+3. **Custom Translation Service**: Implement `TranslationService` (or extend `CoreTranslationService`) and `TranslationServiceFactory` interfaces
+
+Example: To use a different translation service, create a new implementation in `services/translation/` that implements the `TranslationService` interface, then update the GUI to use your factory.
+
+## FAQ
+
+### How does the program work?
+
+When the program starts working, it takes the audio stream in real time from the input device (microphone or computer output) and transcribes it. After a piece of audio is transcribed, the corresponding text fragment is obtained and output to the screen immediately.
+
+To avoid inaccurate transcription due to lack of context or speech being cut off mid-sentence, the program uses a "transcription window" mechanism. Segments that have been transcribed but not yet confirmed are displayed as underlined blue text. When the next audio chunk arrives, it's concatenated to the window. The audio in the window is transcribed iteratively, with results constantly revised and updated until a sentence is completed and has sufficient subsequent context (determined by the `patience` parameter) before being confirmed (turning into black text).
+
+The last few confirmed segments (controlled by the `memory` parameter) are used as prompts for subsequent transcription to improve accuracy.
+
+Simultaneously, the real-time transcription fragments are sent to Google Translate, and translation results are displayed in the right panel. Users can specify source and target languages using the respective dropdowns.
+
+### What is the effect of the `patience` and `memory` parameters?
+
+**Patience**: Determines the minimum time to wait for subsequent speech before confirming a segment.
+- Too low: May confirm segments too early, resulting in incomplete sentences
+- Too high: Creates lag as the transcription window accumulates too much content
+
+**Memory**: Controls how many previous confirmed segments are used as context prompts.
+- Too low: Insufficient context may reduce transcription accuracy
+- Too high: Overly long prompts may slow down transcription
+
+### What are the advantages of Whispering?
+
+- **Real-time iterative transcription**: Continuously refines results while minimizing delay
+- **Smart sentence boundary detection**: Automatically determines optimal points to confirm segments
+- **Simultaneous translation**: Get translations in real-time alongside transcription
+- **System audio capture**: Can transcribe audio from any application via loopback devices
+
+### Does it need Internet connectivity?
+
+- **Transcription only**: No internet required. Set target language to `none`.
+- **With translation**: Internet connection required for Google Translate API.
