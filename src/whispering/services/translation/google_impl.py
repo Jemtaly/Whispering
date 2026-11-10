@@ -63,16 +63,17 @@ class GoogleTranslationServiceFactory(TranslationServiceFactory):
     def __init__(
         self,
         timeout: float,
+        lang: LanguageCode | None,
     ):
         self.timeout = timeout
+        self.lang = lang
 
     def create(
         self,
-        source_lang: LanguageCode | None,
-        target_lang: LanguageCode | None,
+        lang: LanguageCode | None,
     ) -> TranslationService:
         return GoogleTranslationService(
-            source_lang=source_lang,
-            target_lang=target_lang,
+            source_lang=lang,
+            target_lang=self.lang,
             timeout=self.timeout,
         )

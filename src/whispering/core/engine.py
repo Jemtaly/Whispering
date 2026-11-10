@@ -1,85 +1,164 @@
+from collections.abc import Callable
+from dataclasses import dataclass, field
+
 from threading import Thread
-from typing import Callable
 
 from whispering.core.utils import MergingQueue, Pair, Data
 from whispering.core.interfaces import (
     RecordingServiceFactory,
+    RecordingService,
     TranscriptionServiceFactory,
+    TranscriptionService,
     TranslationServiceFactory,
+    TranslationService,
     LanguageCode,
 )
+
+
+@dataclass
+class RecordingConfig:
+    factory: RecordingServiceFactory
+    on_error: "Callable[[Exception], None]"
+
+
+@dataclass
+class TranscriptionConfig:
+    factory: TranscriptionServiceFactory
+    result_queue: MergingQueue[Pair]
+    on_error: "Callable[[Exception], None]"
+
+
+@dataclass
+class TranslationConfig:
+    factory: TranslationServiceFactory
+    result_queue: MergingQueue[Pair]
+    on_error: "Callable[[Exception], None]"
+
+
+@dataclass
+class RecordingContext:
+    service: "RecordingService"
+    put: "Callable[[Data | None], None]"
+    on_error: "Callable[[Exception], None]"
+
+    is_running: bool = False
+
+    def stop(self):
+        self.is_running = False
+
+    def start(self):
+        self.is_running = True
+        try:
+            with self.service:
+                while self.is_running:
+                    self.put(self.service.read())
+        except Exception as err:
+            self.on_error(err)
+        finally:
+            self.put(None)
+
+
+@dataclass
+class TranscriptionContext:
+    service: "TranscriptionService"
+    put: "Callable[[Pair | None], None]"
+    on_error: "Callable[[Exception], None]"
+
+    buffer_queue: MergingQueue[Data] = field(default_factory=MergingQueue[Data])
+
+    def task(self):
+        try:
+            while frame := self.buffer_queue.get():
+                src = self.service.update(frame)
+                self.put(src)
+        except Exception as err:
+            self.on_error(err)
+        finally:
+            self.put(None)
+
+
+@dataclass
+class TranslationContext:
+    service: "TranslationService"
+    put: "Callable[[Pair | None], None]"
+    on_error: "Callable[[Exception], None]"
+
+    buffer_queue: MergingQueue[Pair] = field(default_factory=MergingQueue[Pair])
+
+    def task(self):
+        try:
+            while pair := self.buffer_queue.get():
+                dst = self.service.update(pair)
+                self.put(dst)
+        except Exception as err:
+            self.on_error(err)
+        finally:
+            self.put(None)
 
 
 class STTEngine:
     def __init__(
         self,
-        record_factory: RecordingServiceFactory,
-        sample_time: float,
-        transc_factory: TranscriptionServiceFactory,
-        transl_factory: TranslationServiceFactory,
-        source_lang: LanguageCode | None,
-        target_lang: LanguageCode | None,
-        transc_result_queue: MergingQueue[Pair],
-        transl_result_queue: MergingQueue[Pair],
+        record_cfg: RecordingConfig,
+        transc_cfg: TranscriptionConfig,
+        transl_cfg: TranslationConfig,
+        lang: LanguageCode | None,
         on_stopped: "Callable[[], None]",
-        on_record_error: "Callable[[Exception], None]" = lambda _: None,
-        on_transc_error: "Callable[[Exception], None]" = lambda _: None,
-        on_transl_error: "Callable[[Exception], None]" = lambda _: None,
     ):
-        self.transc_service = transc_factory.create(
-            lang=source_lang,
+        def transl_put(value: Pair | None):
+            transl_cfg.result_queue.put(value)
+
+        transl_ctx = TranslationContext(
+            service=transl_cfg.factory.create(lang=lang),
+            put=transl_put,
+            on_error=transl_cfg.on_error,
         )
-        self.transl_service = transl_factory.create(
-            source_lang=source_lang,
-            target_lang=target_lang,
+
+        def transc_put(value: Pair | None):
+            transc_cfg.result_queue.put(value)
+            transl_ctx.buffer_queue.put(value)
+
+        transc_ctx = TranscriptionContext(
+            service=transc_cfg.factory.create(lang=lang),
+            put=transc_put,
+            on_error=transc_cfg.on_error,
         )
-        self.record_service = record_factory.create(
-            sample_type=self.transc_service.required_sample_type,
-            sample_rate=self.transc_service.required_sample_rate,
-            sample_time=sample_time,
+
+        def record_put(value: Data | None):
+            transc_ctx.buffer_queue.put(value)
+
+        record_ctx = RecordingContext(
+            service=record_cfg.factory.create(
+                sample_type=transc_ctx.service.required_sample_type,
+                sample_rate=transc_ctx.service.required_sample_rate,
+            ),
+            put=record_put,
+            on_error=record_cfg.on_error,
         )
-        self.is_running = False
-        self.transc_result_queue = transc_result_queue
-        self.transl_result_queue = transl_result_queue
-        self.record_result_queue = MergingQueue[Data]()
-        self.transc2transl_queue = MergingQueue[Pair]()
+
+        self.transl_ctx = transl_ctx
+        self.transc_ctx = transc_ctx
+        self.record_ctx = record_ctx
         self.on_stopped = on_stopped
-        self.on_record_error = on_record_error
-        self.on_transc_error = on_transc_error
-        self.on_transl_error = on_transl_error
 
     @staticmethod
     def start(
-        record_factory: RecordingServiceFactory,
-        sample_time: float,
-        transc_factory: TranscriptionServiceFactory,
-        transl_factory: TranslationServiceFactory,
-        source_lang: LanguageCode | None,  # None means auto detection
-        target_lang: LanguageCode | None,  # None means no translation
-        transc_result_queue: MergingQueue[Pair],
-        transl_result_queue: MergingQueue[Pair],
+        record_cfg: RecordingConfig,
+        transc_cfg: TranscriptionConfig,
+        transl_cfg: TranslationConfig,
+        lang: LanguageCode | None,  # None means auto detection
         on_failure: "Callable[[Exception], None]",
         on_success: "Callable[[STTEngine], None]",
         on_stopped: "Callable[[], None]",
-        on_record_error: "Callable[[Exception], None]" = lambda _: None,
-        on_transc_error: "Callable[[Exception], None]" = lambda _: None,
-        on_transl_error: "Callable[[Exception], None]" = lambda _: None,
     ):
         def task():
             try:
                 eng = STTEngine(
-                    record_factory=record_factory,
-                    sample_time=sample_time,
-                    transc_factory=transc_factory,
-                    transl_factory=transl_factory,
-                    source_lang=source_lang,
-                    target_lang=target_lang,
-                    transc_result_queue=transc_result_queue,
-                    transl_result_queue=transl_result_queue,
+                    record_cfg=record_cfg,
+                    transc_cfg=transc_cfg,
+                    transl_cfg=transl_cfg,
+                    lang=lang,
                     on_stopped=on_stopped,
-                    on_record_error=on_record_error,
-                    on_transc_error=on_transc_error,
-                    on_transl_error=on_transl_error,
                 )
             except Exception as err:
                 on_failure(err)
@@ -90,49 +169,16 @@ class STTEngine:
         Thread(target=task, daemon=True).start()
 
     def stop(self):
-        self.is_running = False
+        self.record_ctx.stop()
 
     def _run(self):
-        self.is_running = True
-        record_thread = Thread(target=self._record_task)
-        transc_thread = Thread(target=self._transc_task)
-        transl_thread = Thread(target=self._transl_task)
-        record_thread.start()
+        transc_thread = Thread(target=self.transc_ctx.task)
+        transl_thread = Thread(target=self.transl_ctx.task)
         transc_thread.start()
         transl_thread.start()
-        record_thread.join()
-        transc_thread.join()
-        transl_thread.join()
-        self.on_stopped()
-
-    def _record_task(self):
         try:
-            with self.record_service:
-                while self.is_running:
-                    self.record_result_queue.put(self.record_service.read())
-        except Exception as err:
-            self.on_record_error(err)
+            self.record_ctx.start()
         finally:
-            self.record_result_queue.put(None)
-
-    def _transc_task(self):
-        try:
-            while frame := self.record_result_queue.get():
-                src = self.transc_service.update(frame)
-                self.transc2transl_queue.put(src)
-                self.transc_result_queue.put(src)
-        except Exception as err:
-            self.on_transc_error(err)
-        finally:
-            self.transc2transl_queue.put(None)
-            self.transc_result_queue.put(None)
-
-    def _transl_task(self):
-        try:
-            while src := self.transc2transl_queue.get():
-                tgt = self.transl_service.update(src)
-                self.transl_result_queue.put(tgt)
-        except Exception as err:
-            self.on_transl_error(err)
-        finally:
-            self.transl_result_queue.put(None)
+            transc_thread.join()
+            transl_thread.join()
+            self.on_stopped()

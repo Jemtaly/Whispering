@@ -77,18 +77,19 @@ class SoundcardRecordingServiceFactory(RecordingServiceFactory):
     def __init__(
         self,
         mic_info: SoundcardMicrophoneInfo,
+        sample_time: float,
     ):
         self.mic_info = mic_info
+        self.sample_time = sample_time
 
     def create(
         self,
         sample_type: np.dtype,
         sample_rate: int,
-        sample_time: float,
     ) -> RecordingService:
         return SoundcardRecordingService(
             self.mic_info,
             sample_type=sample_type,
             sample_rate=sample_rate,
-            sample_time=sample_time,
+            sample_time=self.sample_time,
         )

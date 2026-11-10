@@ -26,7 +26,6 @@ class RecordingServiceFactory(ABC):
         self,
         sample_type: np.dtype,
         sample_rate: int,
-        sample_time: float,
     ) -> RecordingService:
         pass
 
@@ -69,8 +68,7 @@ class TranslationServiceFactory(ABC):
     @abstractmethod
     def create(
         self,
-        source_lang: LanguageCode | None,
-        target_lang: LanguageCode | None,
+        lang: LanguageCode | None,
     ) -> TranslationService:
         pass
 

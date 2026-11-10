@@ -2,7 +2,12 @@ import tkinter as tk
 import tkinter.ttk as ttk
 
 from whispering.core.utils import MergingQueue, Pair
-from whispering.core.engine import STTEngine
+from whispering.core.engine import (
+    STTEngine,
+    RecordingConfig,
+    TranscriptionConfig,
+    TranslationConfig,
+)
 from whispering.services.audio.soundcard_impl import (
     SoundcardMicrophoneInfo,
     SoundcardRecordingServiceFactory,
@@ -143,35 +148,42 @@ class App(tk.Tk):
 
         def start():
             self.control_button.config(text="Starting...", state="disabled")
-            mic_factory = SoundcardRecordingServiceFactory(
-                mic_info=self.mics[self.mic_combo.current()],
-            )
-            transc_factory = WhisperTranscriptionFactory(
-                model=self.model_combo.get(),  # type: ignore
-                device=self.device_combo.get(),  # type: ignore
-                vad=self.vad_check.instate(["selected"]),
-                prompts=[self.prompt_entry.get()],
-                memory=int(self.memory_spin.get()),
-                patience=float(self.patience_spin.get()),
-            )
-            transl_factory = GoogleTranslationServiceFactory(
-                timeout=float(self.timeout_spin.get()),
-            )
             STTEngine.start(
-                record_factory=mic_factory,
-                sample_time=0.1,
-                transc_factory=transc_factory,
-                transl_factory=transl_factory,
-                source_lang=None if self.source_combo.get() == "auto" else self.source_combo.get(),  # type: ignore
-                target_lang=None if self.target_combo.get() == "none" else self.target_combo.get(),  # type: ignore
-                transc_result_queue=self.transc_text.result_queue,
-                transl_result_queue=self.transl_text.result_queue,
+                record_cfg=RecordingConfig(
+                    factory=SoundcardRecordingServiceFactory(
+                        mic_info=self.mics[self.mic_combo.current()],
+                        sample_time=0.1,
+                    ),
+                    on_error=print,
+                ),
+                transc_cfg=TranscriptionConfig(
+                    factory=WhisperTranscriptionFactory(
+                        model=self.model_combo.get(),  # type: ignore
+                        device=self.device_combo.get(),  # type: ignore
+                        vad=self.vad_check.instate(["selected"]),
+                        prompts=[self.prompt_entry.get()],
+                        memory=int(self.memory_spin.get()),
+                        patience=float(self.patience_spin.get()),
+                    ),
+                    result_queue=self.transc_text.result_queue,
+                    on_error=print,
+                ),
+                transl_cfg=TranslationConfig(
+                    factory=GoogleTranslationServiceFactory(
+                        timeout=float(self.timeout_spin.get()),
+                        lang=None
+                        if self.target_combo.get() == "none"
+                        else self.target_combo.get(),
+                    ),
+                    result_queue=self.transl_text.result_queue,
+                    on_error=print,
+                ),
+                lang=None
+                if self.source_combo.get() == "auto"
+                else self.source_combo.get(),
                 on_failure=self.on_stopped,
                 on_success=self.on_started,
                 on_stopped=self.on_stopped,
-                on_record_error=print,
-                on_transc_error=print,
-                on_transl_error=print,
             )
 
         self.control_button.config(text="Start", command=start, state="normal")
