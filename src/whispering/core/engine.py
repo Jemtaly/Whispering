@@ -101,33 +101,42 @@ class STTEngine:
         self,
         record_cfg: RecordingConfig,
         transc_cfg: TranscriptionConfig,
-        transl_cfg: TranslationConfig,
+        transl_cfg: TranslationConfig | None,
         lang: LanguageCode | None,
         on_stopped: "Callable[[], None]",
     ):
-        def transl_put(value: Pair | None):
-            transl_cfg.result_queue.put(value)
+        self.tasks: "list[Callable[[], None]]" = []
 
-        transl_ctx = TranslationContext(
-            service=transl_cfg.factory.create(lang=lang),
-            put=transl_put,
-            on_error=transl_cfg.on_error,
-        )
+        if transl_cfg is not None:
+            def transl_put(value: Pair | None):
+                transl_cfg.result_queue.put(value)
 
-        def transc_put(value: Pair | None):
-            transc_cfg.result_queue.put(value)
-            transl_ctx.buffer_queue.put(value)
+            transl_ctx = TranslationContext(
+                service=transl_cfg.factory.create(lang=lang),
+                put=transl_put,
+                on_error=transl_cfg.on_error,
+            )
+            self.tasks.append(transl_ctx.task)
+
+            def transc_put(value: Pair | None):
+                transc_cfg.result_queue.put(value)
+                transl_ctx.buffer_queue.put(value)
+
+        else:
+            def transc_put(value: Pair | None):
+                transc_cfg.result_queue.put(value)
 
         transc_ctx = TranscriptionContext(
             service=transc_cfg.factory.create(lang=lang),
             put=transc_put,
             on_error=transc_cfg.on_error,
         )
+        self.tasks.append(transc_ctx.task)
 
         def record_put(value: Data | None):
             transc_ctx.buffer_queue.put(value)
 
-        record_ctx = RecordingContext(
+        self.record_ctx = RecordingContext(
             service=record_cfg.factory.create(
                 sample_type=transc_ctx.service.required_sample_type,
                 sample_rate=transc_ctx.service.required_sample_rate,
@@ -136,16 +145,13 @@ class STTEngine:
             on_error=record_cfg.on_error,
         )
 
-        self.transl_ctx = transl_ctx
-        self.transc_ctx = transc_ctx
-        self.record_ctx = record_ctx
         self.on_stopped = on_stopped
 
     @staticmethod
     def start(
         record_cfg: RecordingConfig,
         transc_cfg: TranscriptionConfig,
-        transl_cfg: TranslationConfig,
+        transl_cfg: TranslationConfig | None,
         lang: LanguageCode | None,  # None means auto detection
         on_failure: "Callable[[Exception], None]",
         on_success: "Callable[[STTEngine], None]",
@@ -172,13 +178,12 @@ class STTEngine:
         self.record_ctx.stop()
 
     def _run(self):
-        transc_thread = Thread(target=self.transc_ctx.task)
-        transl_thread = Thread(target=self.transl_ctx.task)
-        transc_thread.start()
-        transl_thread.start()
+        threads = [Thread(target=task) for task in self.tasks]
+        for thread in threads:
+            thread.start()
         try:
             self.record_ctx.start()
         finally:
-            transc_thread.join()
-            transl_thread.join()
+            for thread in threads:
+                thread.join()
             self.on_stopped()
