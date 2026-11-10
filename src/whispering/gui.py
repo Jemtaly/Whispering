@@ -1,5 +1,8 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import time
+
+from threading import Event
 
 from whispering.core.utils import MergingQueue, Pair
 from whispering.core.engine import (
@@ -32,35 +35,45 @@ TARGET_LANGUAGE_CODES = sorted(GOOGLE_TARGET_LANGUAGE_CODES)
 class Text(tk.Text):
     def __init__(self, master: tk.Misc | None = None):
         super().__init__(master)
-        self.result_queue = MergingQueue[Pair]()
         self.tag_config("cnfm", foreground="black")
         self.tag_config("drft", foreground="blue", underline=True)
-        self.insert("end", "  ", "cnfm")
-        self.boundary = self.index("end-1c")
+        self.tag_config("info", foreground="gray")
+
+    def start(self):
+        result_queue = MergingQueue[Pair]()
+        finished = Event()
+        self.config(state="normal")
+        ctag = time.strftime("[%H:%M:%S]")
+        self.insert("end", ctag, "info")
+        self.insert("end", "\n", "info")
+        self.insert("end", "  ", "info")
+        boundary = self.index("end-1c")
         self.see("end")
         self.config(state="disabled")
-        self.update()
 
-    def update(self):
-        while self.result_queue:
-            self.config(state="normal")
-            if result := self.result_queue.get():
-                cnfm = result.cnfm
-                drft = result.drft
-                self.delete(self.boundary, "end")
-                self.insert("end", cnfm, "cnfm")
-                self.boundary = self.index("end-1c")
-                self.insert("end", drft, "drft")
-            else:
-                cnfm = self.get(self.boundary, "end-1c")
-                self.delete(self.boundary, "end")
-                self.insert("end", cnfm, "cnfm")
-                self.insert("end", "\n", "cnfm")
-                self.insert("end", "  ", "cnfm")
-                self.boundary = self.index("end-1c")
-            self.see("end")
-            self.config(state="disabled")
-        self.after(100, self.update)  # avoid busy waiting
+        def update():
+            nonlocal boundary
+            if result_queue:
+                result = result_queue.get()
+                self.config(state="normal")
+                if result is None:
+                    self.insert("end", "\n", "info")
+                else:
+                    cnfm = result.cnfm
+                    drft = result.drft
+                    self.delete(boundary, "end")
+                    self.insert("end", cnfm, "cnfm")
+                    boundary = self.index("end-1c")
+                    self.insert("end", drft, "drft")
+                self.see("end")
+                self.config(state="disabled")
+                if result is None:
+                    finished.set()
+                    return
+            self.after(100, update)
+
+        self.after(100, update)
+        return result_queue, finished.wait
 
 
 class App(tk.Tk):
@@ -165,7 +178,7 @@ class App(tk.Tk):
                         memory=int(self.memory_spin.get()),
                         patience=float(self.patience_spin.get()),
                     ),
-                    result_queue=self.transc_text.result_queue,
+                    result_queue_fn=self.transc_text.start,
                     on_error=print,
                 ),
                 transl_cfg=TranslationConfig(
@@ -175,7 +188,7 @@ class App(tk.Tk):
                         if self.target_combo.get() == "none"
                         else self.target_combo.get(),
                     ),
-                    result_queue=self.transl_text.result_queue,
+                    result_queue_fn=self.transl_text.start,
                     on_error=print,
                 ),
                 lang=None
