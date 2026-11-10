@@ -54,7 +54,9 @@ class SoundcardRecordingService(RecordingService):
         sample_time: float,
     ):
         self.mic = mic_info.get()
-        self.rec = self.mic.recorder(samplerate=sample_rate, channels=1)
+        # Forcing mono capture can corrupt WASAPI audio on Windows. Capture
+        # the device's native channels, then downmix the returned frames.
+        self.rec = self.mic.recorder(samplerate=sample_rate)
         self.sample_size = int(sample_rate * sample_time)
         self.sample_type = sample_type
 
@@ -68,7 +70,7 @@ class SoundcardRecordingService(RecordingService):
         return Data(
             self.rec
             .record(numframes=self.sample_size)
-            .squeeze(axis=1)
+            .mean(axis=1)
             .astype(self.sample_type)
         )
 
