@@ -107,7 +107,6 @@ class STTEngine:
         transc_cfg: TranscriptionConfig,
         transl_cfg: TranslationConfig | None,
         lang: LanguageCode | None,
-        on_stopped: "Callable[[], None]",
     ):
         self.tasks: "list[Callable[[], None]]" = []
 
@@ -191,8 +190,6 @@ class STTEngine:
             on_error=record_cfg.on_error,
         )
 
-        self.on_stopped = on_stopped
-
     @staticmethod
     def start(
         record_cfg: RecordingConfig,
@@ -200,8 +197,7 @@ class STTEngine:
         transl_cfg: TranslationConfig | None,
         lang: LanguageCode | None,  # None means auto detection
         on_failure: "Callable[[Exception], None]",
-        on_success: "Callable[[STTEngine], None]",
-        on_stopped: "Callable[[], None]",
+        on_success: "Callable[[STTEngine], Callable[[], None]]",
     ):
         def task():
             try:
@@ -210,13 +206,13 @@ class STTEngine:
                     transc_cfg=transc_cfg,
                     transl_cfg=transl_cfg,
                     lang=lang,
-                    on_stopped=on_stopped,
                 )
             except Exception as err:
                 on_failure(err)
             else:
-                on_success(eng)
+                on_stopped = on_success(eng)
                 eng._run()
+                on_stopped()
 
         Thread(target=task, daemon=True).start()
 
@@ -227,9 +223,6 @@ class STTEngine:
         threads = [Thread(target=task) for task in self.tasks]
         for thread in threads:
             thread.start()
-        try:
-            self.record_ctx.run()
-        finally:
-            for thread in threads:
-                thread.join()
-            self.on_stopped()
+        self.record_ctx.run()
+        for thread in threads:
+            thread.join()

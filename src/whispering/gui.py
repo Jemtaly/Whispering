@@ -164,6 +164,7 @@ class App(tk.Tk):
             eng.stop()
 
         self.control_button.config(text="Stop", command=stop, state="normal")
+        return self.on_stopped
 
     def on_stopped(self, err: Exception | None = None):
         if err:
@@ -207,7 +208,6 @@ class App(tk.Tk):
                 else self.source_combo.get(),
                 on_failure=self.on_stopped,
                 on_success=self.on_started,
-                on_stopped=self.on_stopped,
             )
 
         self.control_button.config(text="Start", command=start, state="normal")
