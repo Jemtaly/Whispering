@@ -133,6 +133,8 @@ class App(tk.Tk):
         self.target_combo.current(0)
         self.prompt_label = ttk.Label(self.foot_frame, text="Prompt:")
         self.prompt_entry = ttk.Entry(self.foot_frame, state="normal")
+        self.record_state = ttk.Label(self.foot_frame)
+        self.on_recording_stopped()
         self.control_button = ttk.Button(self.foot_frame)
         self.on_stopped()
         self.source_label.pack(side="left", padx=(5, 5))
@@ -141,12 +143,20 @@ class App(tk.Tk):
         self.target_combo.pack(side="left", padx=(0, 5))
         self.prompt_label.pack(side="left", padx=(5, 5))
         self.prompt_entry.pack(side="left", padx=(0, 5), fill="x", expand=True)
+        self.record_state.pack(side="left", padx=(5, 5))
         self.control_button.pack(side="left", padx=(5, 5))
 
     def mic_combo_refresh(self):
         self.mics = SoundcardMicrophoneInfo.list_microphones()
         self.mic_combo.config(values=[f"[{mic.kind}] {mic.name}" for mic in self.mics])
         self.mic_combo.current(0)
+
+    def on_recording_started(self):
+        self.record_state.config(text="Recording...")
+        return self.on_recording_stopped
+
+    def on_recording_stopped(self):
+        self.record_state.config(text="Stopped")
 
     def on_started(self, eng: STTEngine):
         def stop():
@@ -168,6 +178,7 @@ class App(tk.Tk):
                         sample_time=0.1,
                     ),
                     on_error=print,
+                    show_started=self.on_recording_started,
                 ),
                 transc_cfg=TranscriptionConfig(
                     factory=WhisperTranscriptionFactory(
@@ -178,7 +189,7 @@ class App(tk.Tk):
                         memory=int(self.memory_spin.get()),
                         patience=float(self.patience_spin.get()),
                     ),
-                    result_queue_fn=self.transc_text.start,
+                    start_show=self.transc_text.start,
                     on_error=print,
                 ),
                 transl_cfg=TranslationConfig(
@@ -188,7 +199,7 @@ class App(tk.Tk):
                         if self.target_combo.get() == "none"
                         else self.target_combo.get(),
                     ),
-                    result_queue_fn=self.transl_text.start,
+                    start_show=self.transl_text.start,
                     on_error=print,
                 ),
                 lang=None

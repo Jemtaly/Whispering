@@ -20,56 +20,56 @@ from whispering.core.interfaces import (
 class RecordingConfig:
     factory: RecordingServiceFactory
     on_error: "Callable[[Exception], None]"
+    show_started: "Callable[[], Callable[[], Any]]"
 
 
 @dataclass
 class TranscriptionConfig:
     factory: TranscriptionServiceFactory
     on_error: "Callable[[Exception], None]"
-    result_queue_fn: "Callable[[], tuple[MergingQueue[Pair], Callable[[], Any]]]"
+    start_show: "Callable[[], tuple[MergingQueue[Pair], Callable[[], Any]]]"
 
 
 @dataclass
 class TranslationConfig:
     factory: TranslationServiceFactory
     on_error: "Callable[[Exception], None]"
-    result_queue_fn: "Callable[[], tuple[MergingQueue[Pair], Callable[[], Any]]]"
+    start_show: "Callable[[], tuple[MergingQueue[Pair], Callable[[], Any]]]"
 
 
 @dataclass
 class RecordingContext:
     service: "RecordingService"
-    put: "Callable[[Data], None]"
-    end: "Callable[[], None]"
+    start: "Callable[[], tuple[Callable[[Data], None], Callable[[], None]]]"
     on_error: "Callable[[Exception], None]"
 
-    is_running: bool = False
+    is_running: bool = True
 
     def stop(self):
         self.is_running = False
 
-    def start(self):
-        self.is_running = True
+    def run(self):
+        put, end = self.start()
         try:
             with self.service:
                 while self.is_running:
-                    self.put(self.service.read())
+                    put(self.service.read())
         except Exception as err:
             self.on_error(err)
         finally:
-            self.end()
+            end()
 
 
 @dataclass
 class TranscriptionContext:
     service: "TranscriptionService"
-    make_put: "Callable[[], tuple[Callable[[Pair], None], Callable[[], None]]]"
+    start: "Callable[[], tuple[Callable[[Pair], None], Callable[[], None]]]"
     on_error: "Callable[[Exception], None]"
 
     buffer_queue: MergingQueue[Data] = field(default_factory=MergingQueue[Data])
 
-    def task(self):
-        put, end = self.make_put()
+    def run(self):
+        put, end = self.start()
         try:
             while frame := self.buffer_queue.get():
                 src = self.service.update(frame)
@@ -83,13 +83,13 @@ class TranscriptionContext:
 @dataclass
 class TranslationContext:
     service: "TranslationService"
-    make_put: "Callable[[], tuple[Callable[[Pair], None], Callable[[], None]]]"
+    start: "Callable[[], tuple[Callable[[Pair], None], Callable[[], None]]]"
     on_error: "Callable[[Exception], None]"
 
     buffer_queue: MergingQueue[Pair] = field(default_factory=MergingQueue[Pair])
 
-    def task(self):
-        put, end = self.make_put()
+    def run(self):
+        put, end = self.start()
         try:
             while pair := self.buffer_queue.get():
                 dst = self.service.update(pair)
@@ -113,76 +113,81 @@ class STTEngine:
 
         if transl_cfg is not None:
 
-            def make_transl_put():
-                transl_result_queue, join = transl_cfg.result_queue_fn()
+            def start_transl():
+                transl_result_queue, join_show = transl_cfg.start_show()
 
-                def transl_put(value: Pair):
+                def put(value: Pair):
                     transl_result_queue.put(value)
 
-                def transl_end():
+                def end():
                     transl_result_queue.put(None)
-                    join()
+                    join_show()
 
-                return transl_put, transl_end
+                return put, end
 
             transl_ctx = TranslationContext(
                 service=transl_cfg.factory.create(lang=lang),
-                make_put=make_transl_put,
+                start=start_transl,
                 on_error=transl_cfg.on_error,
             )
-            self.tasks.append(transl_ctx.task)
+            self.tasks.append(transl_ctx.run)
 
-            def make_transc_put():
+            def start_transc():
                 transl_buffer_queue = transl_ctx.buffer_queue
-                transc_result_queue, join = transc_cfg.result_queue_fn()
+                transc_result_queue, join_show = transc_cfg.start_show()
 
-                def transc_put(value: Pair):
+                def put(value: Pair):
                     transl_buffer_queue.put(value)
                     transc_result_queue.put(value)
 
-                def transc_end():
+                def end():
                     transl_buffer_queue.put(None)
                     transc_result_queue.put(None)
-                    join()
+                    join_show()
 
-                return transc_put, transc_end
+                return put, end
 
         else:
 
-            def make_transc_put():
-                transc_result_queue, join = transc_cfg.result_queue_fn()
+            def start_transc():
+                transc_result_queue, join_show = transc_cfg.start_show()
 
-                def transc_put(value: Pair):
+                def put(value: Pair):
                     transc_result_queue.put(value)
 
-                def transc_end():
+                def end():
                     transc_result_queue.put(None)
-                    join()
+                    join_show()
 
-                return transc_put, transc_end
+                return put, end
 
         transc_ctx = TranscriptionContext(
             service=transc_cfg.factory.create(lang=lang),
-            make_put=make_transc_put,
+            start=start_transc,
             on_error=transc_cfg.on_error,
         )
-        self.tasks.append(transc_ctx.task)
+        self.tasks.append(transc_ctx.run)
 
         transc_buffer_queue = transc_ctx.buffer_queue
 
-        def record_put(value: Data):
-            transc_buffer_queue.put(value)
+        def start_record():
+            show_stopped = record_cfg.show_started()
 
-        def record_end():
-            transc_buffer_queue.put(None)
+            def put(value: Data):
+                transc_buffer_queue.put(value)
+
+            def end():
+                transc_buffer_queue.put(None)
+                show_stopped()
+
+            return put, end
 
         self.record_ctx = RecordingContext(
             service=record_cfg.factory.create(
                 sample_type=transc_ctx.service.required_sample_type,
                 sample_rate=transc_ctx.service.required_sample_rate,
             ),
-            put=record_put,
-            end=record_end,
+            start=start_record,
             on_error=record_cfg.on_error,
         )
 
@@ -223,7 +228,7 @@ class STTEngine:
         for thread in threads:
             thread.start()
         try:
-            self.record_ctx.start()
+            self.record_ctx.run()
         finally:
             for thread in threads:
                 thread.join()
