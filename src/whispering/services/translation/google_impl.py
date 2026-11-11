@@ -36,20 +36,18 @@ class GoogleTranslationService(CoreTranslationService):
     def __init__(
         self,
         source_lang: LanguageCode | None,
-        target_lang: LanguageCode | None,
+        target_lang: LanguageCode,
         timeout: float,
     ):
         super().__init__()
-        self.source_lang = source_lang
+        self.source_lang = source_lang or "auto"
         self.target_lang = target_lang
         self.timeout = timeout
 
     def translate(self, text: str) -> list[TranslationResult]:
-        if self.target_lang is None:
-            return [TranslationResult(text, "Target language is not specified.")]
         try:
             url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl={tl}&dt=t&q={q}".format(
-                sl=self.source_lang or "auto",
+                sl=self.source_lang,
                 tl=self.target_lang,
                 q=quote(text),
             )
@@ -63,7 +61,7 @@ class GoogleTranslationServiceFactory(TranslationServiceFactory):
     def __init__(
         self,
         timeout: float,
-        lang: LanguageCode | None,
+        lang: LanguageCode,
     ):
         self.timeout = timeout
         self.lang = lang
