@@ -6,7 +6,7 @@ from threading import Event
 from typing import Callable, Literal
 
 from whispering.core.utils import MergingQueue, Pair
-from whispering.core.engine import STTEngine, STEngine
+from whispering.core.engine import STTEngine
 from whispering.services.audio.soundcard_impl import (
     SoundcardMicrophoneInfo,
     SoundcardRecordingServiceFactory,
@@ -87,22 +87,28 @@ class History(tk.Canvas):
             script = self.bind_class("TtkScrollable", sequence).replace("%W", str(self))
             widget.bind(sequence, f"{script}\nbreak")
 
-    def create_block(self, title: str, columns: int) -> list[Text]:
+    def create_block(self, title: str, subtitles: list[str]) -> list[Text]:
         block = tk.Frame(self.content, background="white")
         block.pack(fill="x", padx=4, pady=(4, 8))
         heading = tk.Label(block, text=title, foreground="gray", background="white")
-        heading.grid(row=0, column=0, columnspan=columns, sticky="w", pady=(0, 4))
-        texts = [Text(block) for _ in range(columns)]
-        for index, text in enumerate(texts):
+        heading.grid(row=0, column=0, columnspan=len(subtitles), sticky="w", pady=(0, 4))
+        texts: list[Text] = []
+        subheadings: list[tk.Label] = []
+        for index, subtitle in enumerate(subtitles):
             block.columnconfigure(index, weight=1, uniform="text")
+            subtitle_label = tk.Label(block, text=subtitle, foreground="gray", background="white")
+            subtitle_label.grid(row=1, column=index, sticky="w", pady=(0, 4))
+            subheadings.append(subtitle_label)
+            text = Text(block)
             text.config(width=1, height=1)
-            text.grid(row=1, column=index, sticky="nsew")
-        for widget in (block, heading, *texts):
+            text.grid(row=2, column=index, sticky="nsew")
+            texts.append(text)
+        for widget in (block, heading, *subheadings, *texts):
             self.bind_scroll(widget)
         return texts
 
-    def start_block(self, title: str, columns: int) -> tuple[Callable[[], bool], list[MergingQueue[Pair]]]:
-        texts = self.create_block(title, columns)
+    def start_block(self, title: str, subtitles: list[str]) -> tuple[Callable[[], bool], list[MergingQueue[Pair]]]:
+        texts = self.create_block(title, subtitles)
         finished = Event()
 
         def update() -> None:
@@ -194,28 +200,26 @@ class App(tk.Tk):
         self.mic_combo.config(values=[f"[{mic.kind}] {mic.name}" for mic in self.mics])
         self.mic_combo.current(0)
 
-    def on_started(self, stopper: "Callable[[], None]"):
+    def on_started(
+        self,
+        stopper: "Callable[[], None]",
+        source_lang: str | None,
+        target_langs: list[str],
+    ):
         def stop():
             self.control_button.config(text="Stopping...", state="disabled")
             stopper()
 
         self.control_button.config(text="Stop", command=stop, state="normal")
 
-    def on_started_with_transl(
-        self,
-        stopper: "Callable[[], None]",
-        source_lang: str | None,
-        target_lang: str,
-    ):
-        self.on_started(stopper)
-
-        source_lang = source_lang or "auto"
         current_time = time.strftime("[%H:%M:%S]")
-        title = f"{current_time} {source_lang} -> {target_lang}"
+        source_lang = source_lang or "auto"
+        source_title = f"Transcription ({source_lang})"
+        target_titles = [f"Translation ({target_lang})" for target_lang in target_langs]
         join, (
             transc_result_queue,
-            transl_result_queue,
-        ) = self.history.start_block(title, 2)
+            *transl_result_queues,
+        ) = self.history.start_block(current_time, [source_title, *target_titles])
 
         def on_stopped():
             join()
@@ -224,30 +228,7 @@ class App(tk.Tk):
         return (
             on_stopped,
             transc_result_queue,
-            transl_result_queue,
-        )
-
-    def on_started_without_transl(
-        self,
-        stopper: "Callable[[], None]",
-        source_lang: str | None,
-    ):
-        self.on_started(stopper)
-
-        source_lang = source_lang or "auto"
-        current_time = time.strftime("[%H:%M:%S]")
-        title = f"{current_time} {source_lang}"
-        join, (
-            transc_result_queue,
-        ) = self.history.start_block(title, 1)
-
-        def on_stopped():
-            join()
-            self.on_stopped()
-
-        return (
-            on_stopped,
-            transc_result_queue,
+            transl_result_queues,
         )
 
     def on_stopped(self, err: Exception | None = None):
@@ -271,12 +252,13 @@ class App(tk.Tk):
             source_lang = None if self.source_combo.get() == "auto" else self.source_combo.get()
             target_lang = None if self.target_combo.get() == "none" else self.target_combo.get()
             if target_lang is None:
-                STEngine.start(
+                STTEngine.start(
                     record_cfg=record_cfg,
                     transc_cfg=transc_cfg,
+                    transl_cfgs=[],
                     lang=source_lang,
                     on_failure=self.on_stopped,
-                    on_success=lambda stopper: self.on_started_without_transl(stopper, source_lang),
+                    on_success=lambda stopper: self.on_started(stopper, source_lang, []),
                 )
             else:
                 transl_cfg = GoogleTranslationServiceFactory(
@@ -286,10 +268,10 @@ class App(tk.Tk):
                 STTEngine.start(
                     record_cfg=record_cfg,
                     transc_cfg=transc_cfg,
-                    transl_cfg=transl_cfg,
+                    transl_cfgs=[transl_cfg],
                     lang=source_lang,
                     on_failure=self.on_stopped,
-                    on_success=lambda stopper: self.on_started_with_transl(stopper, source_lang, target_lang),
+                    on_success=lambda stopper: self.on_started(stopper, source_lang, [target_lang]),
                 )
 
         self.control_button.config(text="Start", command=start, state="normal")
